@@ -21,6 +21,12 @@
   const nz = (v) => Math.max(EPS, v);
 
   function addSegment(shapes, p, canRotate) {
+    if (p.join) {
+      // pieces of one polyline: overlap neighbours by half the line width at each end
+      const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1) || 1, e = (p.w || 1) * 0.5;
+      const ux = (p.x2 - p.x1) / len, uy = (p.y2 - p.y1) / len;
+      p = Object.assign({}, p, { x1: p.x1 - ux * e, y1: p.y1 - uy * e, x2: p.x2 + ux * e, y2: p.y2 + uy * e });
+    }
     const dx = p.x2 - p.x1, dy = p.y2 - p.y1;
     let s;
     if (Math.abs(dx) < 0.01 || Math.abs(dy) < 0.01 || dx * dy > 0) {
@@ -58,16 +64,21 @@
 
   function styleText(s, p, fontName) {
     const tf = s.textFrame;
-    tf.autoSizeSetting = "AutoSizeNone";
-    tf.wordWrap = !!p.wrap;
-    tf.leftMargin = 0; tf.rightMargin = 0; tf.topMargin = 0; tf.bottomMargin = 0;
-    tf.verticalAlignment = p.valign === "top" ? "Top" : "Middle";
     const tr = tf.textRange;
+    // Font and margins first, auto-size off, and only then the final geometry:
+    // PowerPoint sizes a new text box for its 18pt default font (and wraps narrow
+    // boxes), growing it downwards. Re-applying the box last undoes that growth,
+    // otherwise the number ends up below where it belongs.
     tr.font.size = p.size;
     tr.font.color = p.color;
     tr.font.bold = !!p.bold;
     if (fontName) tr.font.name = fontName;
+    tf.wordWrap = !!p.wrap;
+    tf.leftMargin = 0; tf.rightMargin = 0; tf.topMargin = 0; tf.bottomMargin = 0;
+    tf.autoSizeSetting = "AutoSizeNone";
+    tf.verticalAlignment = p.valign === "top" ? "Top" : "Middle";
     tr.paragraphFormat.horizontalAlignment = p.align === "left" ? "Left" : p.align === "right" ? "Right" : "Center";
+    s.left = p.x; s.top = p.y; s.width = Math.max(0.5, p.w); s.height = Math.max(0.5, p.h);
   }
 
   function drawPrimitive(shapes, p, ctx) {

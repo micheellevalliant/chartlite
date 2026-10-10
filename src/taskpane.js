@@ -68,6 +68,7 @@
       smooth: c("smooth"),
       markerSize: numOpt("markerSize"),
       markerFill: v("markerFill"),
+      legendPos: v("legendPos"),
     };
   }
 
@@ -84,6 +85,7 @@
     ["yMin", "yMax", "y2Min", "y2Max", "markerSize"].forEach((id) => { $(id).value = o[id] === null || o[id] === undefined ? "" : toRaw(o[id], locale); });
     chk("smooth", o.smooth);
     set("markerFill", o.markerFill || "solid");
+    set("legendPos", o.legendPos || "auto");
     state.deltas = (o.deltas || []).map((d) => ({ from: d.from, to: d.to, mode: d.mode || "pct" }));
     renderArrowControls(o.cagr || null);
   }
@@ -555,7 +557,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.2.0";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 

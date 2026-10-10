@@ -62,7 +62,14 @@
       <label>Negatives
         <select id="negStyle"><option value="minus">−12 (red)</option><option value="paren">(12) (red)</option></select>
       </label>
-      <label class="span2">Font <input type="text" id="fontName" placeholder="Blank = slide theme font" /></label>
+      <label>Legend
+        <select id="legendPos">
+          <option value="auto">Auto</option>
+          <option value="top">Top</option>
+          <option value="end">At line ends</option>
+        </select>
+      </label>
+      <label>Font <input type="text" id="fontName" placeholder="Theme font" /></label>
     </div>
     <div class="checks">
       <label class="check"><input type="checkbox" id="showLabels" checked /> Value labels</label>

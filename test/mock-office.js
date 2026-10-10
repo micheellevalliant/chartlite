@@ -41,10 +41,21 @@
     });
     const font = strict({}, ["size", "color", "bold", "name"]);
     const para = strict({}, ["horizontalAlignment"], { horizontalAlignment: (v) => HALIGN.has(v) });
-    const textRange = strict({ text: text || "", font, paragraphFormat: para }, ["text"]);
+    const sh = { left: opts.left, top: opts.top, width: opts.width, height: opts.height };
+    let autoNone = false;
+    const grow = () => {
+      if (autoNone || !textRange.text) return;
+      const avail = Math.max(1, sh.width - 14.4);
+      const lines = Math.max(1, Math.ceil((String(textRange.text).length * 18 * 0.55) / avail));
+      sh.height = Math.max(sh.height, lines * 21.6 + 7.2);   // grows downward, top stays
+    };
+    const textRange = new Proxy({ text: text || "", font, paragraphFormat: para }, {
+      set(t, k, v) { if (k !== "text") fail("unknown property set: " + k); t.text = v; grow(); return true; },
+    });
     const textFrame = strict({ textRange }, ["autoSizeSetting", "wordWrap", "leftMargin", "rightMargin", "topMargin", "bottomMargin", "verticalAlignment"],
-      { autoSizeSetting: (v) => AUTOSIZE.has(v), verticalAlignment: (v) => VALIGN.has(v) });
-    const s = {
+      { autoSizeSetting: (v) => { if (AUTOSIZE.has(v)) { autoNone = v === "AutoSizeNone"; return true; } return false; }, verticalAlignment: (v) => VALIGN.has(v) });
+    const s = sh;
+    Object.assign(s, {
       id: String(nextId++), kind, slide, level: 0, parentGroup: null,
       left: opts.left, top: opts.top, width: opts.width, height: opts.height,
       name: "", rotation: 0, children: null,
@@ -56,8 +67,10 @@
       load() { return this; },
       delete() { slide._remove(s); },
       getParentSlide() { return slide; },
-      get type() { return kind; },
-    };
+    });
+    Object.defineProperty(s, "type", { get: () => kind });
+    s._grow = grow;
+    s._req = { left: opts.left, top: opts.top, width: opts.width, height: opts.height };
     return s;
   }
 
@@ -68,7 +81,7 @@
     slide.shapes = {
       addGeometricShape(t, o) { if (!GEOM.has(t)) fail("geom type " + t); const s = makeShape(slide, "Geom:" + t, o); slide.items.push(s); return s; },
       addLine(t, o) { if (t !== "Straight") fail("line type " + t); const s = makeShape(slide, "Line", o); slide.items.push(s); return s; },
-      addTextBox(txt, o) { const s = makeShape(slide, "TextBox", o, txt); slide.items.push(s); return s; },
+      addTextBox(txt, o) { const s = makeShape(slide, "TextBox", o, txt); s._grow(); slide.items.push(s); return s; },
       addGroup(ids) {
         const kids = ids.map((id) => { const k = find(id); if (!k) fail("group: missing id " + id); return k; });
         const l = Math.min(...kids.map((k) => k.left)), t = Math.min(...kids.map((k) => k.top));
@@ -123,7 +136,7 @@
       const lf = s.lineFormat;
       const stroke = lf.visible === false ? 'stroke="none"' : `stroke="${lf.color}" stroke-width="${lf.weight}"`;
       if (s.kind === "Line") {
-        out.push(`<line x1="${s.left}" y1="${s.top}" x2="${s.left + s.width}" y2="${s.top + s.height}" ${stroke}${lf.dashStyle ? ' stroke-dasharray="3 2"' : ""}${tf}/>`);
+        out.push(`<line stroke-linecap="butt" x1="${s.left}" y1="${s.top}" x2="${s.left + s.width}" y2="${s.top + s.height}" ${stroke}${lf.dashStyle ? ' stroke-dasharray="3 2"' : ""}${tf}/>`);
       } else if (s.kind === "Geom:Ellipse") {
         out.push(`<ellipse cx="${cx}" cy="${cy}" rx="${s.width / 2}" ry="${s.height / 2}" fill="${s.fillColor || "none"}" ${stroke}/>`);
       } else if (s.kind === "Geom:FlowChartMerge" || s.kind === "Geom:Triangle") {

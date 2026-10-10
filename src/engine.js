@@ -37,6 +37,8 @@
     smooth: false,               // smooth (curved) lines
     markerSize: null,            // dot diameter in pt (null = auto, 0 = no dots)
     markerFill: "solid",         // solid | white | none
+    legendPos: "auto",           // auto (line charts: at line ends, others: top) | top | end
+    lineWidth: 1.75,
     barWidth: 0.62,        // fraction of the category slot used by bars
     pct100Labels: true,    // 100% chart: label segments with share instead of value
     cagr: null,            // {from, to}
@@ -219,7 +221,10 @@
 
     // ---- vertical bands (top → bottom)
     const multiSeries = !isWF && spec.series.length > 1;
-    const legendH = o.showLegend && multiSeries ? fs * 2.0 : 0;
+    const pureLine = type === "line";
+    const legendPos = o.legendPos === "auto" || !o.legendPos ? (pureLine ? "end" : "top") : o.legendPos;
+    const endLegend = o.showLegend && pureLine && legendPos === "end";
+    const legendH = o.showLegend && multiSeries && !endLegend ? fs * 2.0 : 0;
     const arrows = [];
     if (o.cagr && o.cagr.from !== undefined && o.cagr.to !== undefined && o.cagr.from !== o.cagr.to && !isWF)
       arrows.push({ from: +o.cagr.from, to: +o.cagr.to, mode: "cagr" });
@@ -257,11 +262,13 @@
     // secondary lines live in the upper part of the plot so they don't sit on the bars
     const Y2 = (v) => plotTop + (1 - (v - smin) / (smax - smin)) * plotH * 0.26;
 
-    const slot = box.w / n;
+    const msEarly = isNum(o.markerSize) ? Math.max(0, o.markerSize) : fs * 0.5;
+    const endW = endLegend ? Math.max(...lineIdx.map((i) => textW(spec.series[i].name || "Series " + (i + 1), fs))) + msEarly / 2 + fs * 1.6 : 0;
+    const slot = (box.w - endW) / n;
     const barW = slot * o.barWidth;
     const cx = (c) => box.x + slot * (c + 0.5);
     const labelTop = [];   // per category: highest y used (for arrows)
-    const ms = isNum(o.markerSize) ? Math.max(0, o.markerSize) : fs * 0.55;
+    const ms = msEarly;
     const dotStyle = (col, size) => o.markerFill === "none"
       ? { fill: null, stroke: col, strokeW: Math.max(1, size * 0.18) }
       : o.markerFill === "white"
@@ -276,7 +283,7 @@
         const col = seriesColor(spec, o, i);
         const isLine = lineIdx.indexOf(i) >= 0;
         if (isLine) {
-          P.push({ type: "line", x1: lx, y1: ly + fs * 0.6, x2: lx + fs * 1.4, y2: ly + fs * 0.6, color: col, w: 2 });
+          P.push({ type: "line", x1: lx, y1: ly + fs * 0.6, x2: lx + fs * 1.4, y2: ly + fs * 0.6, color: col, w: o.lineWidth || 1.75 });
           if (ms > 0) P.push(Object.assign({ type: "dot", x: lx + fs * 0.45, y: ly + fs * 0.35, w: fs * 0.5, h: fs * 0.5 }, dotStyle(col, fs * 0.5)));
         } else {
           P.push({ type: "rect", x: lx + fs * 0.2, y: ly + fs * 0.1, w: fs, h: fs, fill: col });
@@ -342,7 +349,7 @@
             if (isWF) {
               // waterfall: label above the bar (below for decreases)
               const ly = s.wfKind === "down" ? y2 + fs * 0.1 : y1 - fs * 1.5;
-              P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.4, text: lbl, size: fs, color: negLbl ? NEG_RED : o.textColor, align: "center", bold: s.wfKind === "total" || s.wfKind === "start" });
+              P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.4, text: lbl, size: fs, color: negLbl ? NEG_RED : o.textColor, align: "center" });
               top = Math.min(top, ly);
             } else if (fitsInside && !(barIdx.length === 1 && type !== "stacked100")) {
               P.push({
@@ -357,7 +364,7 @@
             const t = e.total;
             const lbl = formatNumber(t, o);
             const ly = t >= 0 || type === "stacked100" ? Yc(e.top) - fs * 1.55 : Yc(e.bottom) + fs * 0.15;
-            P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.45, text: lbl, size: fs, bold: true, color: t < 0 ? NEG_RED : o.textColor, align: "center" });
+            P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.45, text: lbl, size: fs, color: t < 0 ? NEG_RED : o.textColor, align: "center" });
             top = Math.min(top, ly);
           } else if (!isWF && o.showLabels && barIdx.length === 1 && type !== "stacked100") {
             // single-series stacked == plain bar: put value above instead of inside
@@ -398,7 +405,7 @@
       runs.forEach((r) => {
         const path = o.smooth && r.length > 2 ? smoothPath(r, Math.max(4, Math.round(slot / 9))) : r;
         for (let k = 0; k < path.length - 1; k++) {
-          P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: 2 });
+          P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: o.lineWidth || 1.75, join: true });
         }
       });
       pts.forEach((p) => {
@@ -407,36 +414,61 @@
         if (o.showLabels) {
           const lbl = formatNumber(p.v, o, s.unit !== undefined ? { unit: s.unit } : {});
           const overBars = barIdx.length && secondary.indexOf(i) < 0;   // only then can labels collide with bars
-          lineLabels.push({ p, lbl, col, overBars });
+          lineLabels.push({ p, lbl, col, overBars, series: i });
         }
       });
     });
-    // Per category: the highest point keeps its label above; a label that would collide
-    // with the one above it goes below its own point instead.
-    const lh = fs * 1.4;
+    // think-cell style placement, per category: the highest point's label goes above it,
+    // the lowest point's below it, points in between take whichever side has room
+    // (or are left unlabelled rather than overlap). No boxes behind the numbers.
+    const lh = fs * 1.3;
+    const gapA = Math.max(fs * 0.25, ms / 2 + fs * 0.2);   // clearance between dot and label
+    const lastLabel = {};
     for (let c = 0; c < n; c++) {
       const here = lineLabels.filter((L) => L.p.c === c).sort((a, b) => a.p.y - b.p.y);
-      let prevBottom = -Infinity;
+      const used = [];   // occupied vertical spans [top, bottom] in this column
+      const free = (t, b) => used.every(([u0, u1]) => b <= u0 || t >= u1);
       here.forEach((L, k) => {
-        const above = L.p.y - Math.max(fs * 1.75, ms / 2 + fs * 1.65);
-        let ly = above;
-        if (ly < prevBottom + 1) ly = L.p.y + Math.max(fs * 0.45, ms / 2 + fs * 0.1);   // flip below the point
-        const below = here[k + 1];
-        if (ly > L.p.y && below && ly + lh > below.p.y - fs * 0.4) {
-          // squeezed between two close points: keep it above, nudged clear of the label above
-          ly = Math.max(prevBottom + 1, above);
-        }
-        // tight white backing keeps the number readable where a line passes behind it
-        const lw = textW(L.lbl, fs) * 0.92;
-        P.push({ type: "text", x: L.p.x - lw / 2, y: ly + lh * 0.12, w: lw, h: lh * 0.76, text: L.lbl, size: fs, color: L.p.v < 0 ? NEG_RED : darken(L.col), align: "center", bold: true, fill: "#FFFFFF" });
-        prevBottom = ly + lh;
+        const aboveY = L.p.y - gapA - lh, belowY = L.p.y + gapA;
+        const lowest = k === here.length - 1 && here.length > 1;
+        const prevP = here[k - 1], nextP = here[k + 1];
+        const fitsAbove = free(aboveY, aboveY + lh) && (!prevP || aboveY >= prevP.p.y + ms / 2);
+        const fitsBelow = free(belowY, belowY + lh) && (!nextP || belowY + lh <= nextP.p.y - ms / 2 - gapA - lh);
+        let ly = null;
+        if (lowest) ly = fitsBelow || !nextP ? belowY : (fitsAbove ? aboveY : null);
+        else ly = fitsAbove ? aboveY : (fitsBelow ? belowY : null);
+        if (ly === null) return;          // too crowded: skip rather than overlap
+        used.push([ly, ly + lh]);
+        const lw = Math.max(textW(L.lbl, fs), fs * 2);
+        P.push({ type: "text", x: L.p.x - lw / 2, y: ly, w: lw, h: lh, text: L.lbl, size: fs, color: L.p.v < 0 ? NEG_RED : o.textColor, align: "center" });
         if (ly < L.p.y) labelTop[c] = Math.min(labelTop[c] === undefined ? Infinity : labelTop[c], ly);
+        lastLabel[L.series + ":" + c] = lw;
       });
     }
 
-    // ---- category labels
+    // series names at the end of each line instead of a legend box
+    if (endLegend) {
+      const ends = lineIdx.map((i) => {
+        const vals = spec.series[i].values;
+        let c = vals.length - 1;
+        while (c >= 0 && typeof vals[c] !== "number") c--;
+        if (c < 0) return null;
+        const x = cx(c), y = Yc(vals[c]);
+        const lw = lastLabel[i + ":" + c] || 0;
+        return { i, x: x + Math.max(ms / 2, lw / 2) + fs * 0.5, y, name: spec.series[i].name || "Series " + (i + 1) };
+      }).filter(Boolean).sort((a, b) => a.y - b.y);
+      const gap = fs * 1.25;
+      for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < gap) ends[k].y = ends[k - 1].y + gap;
+      ends.forEach((e) => {
+        P.push({ type: "text", x: e.x, y: e.y - lh / 2, w: textW(e.name, fs) + 2, h: lh, text: e.name, size: fs, color: darken(seriesColor(spec, o, e.i)), align: "left" });
+      });
+    }
+
+    // ---- category labels (line charts get a thin category axis like think-cell)
+    const catTop = pureLine ? plotBottom + fs * 0.9 : plotBottom + bottomPad + fs * 0.3;
+    if (pureLine) P.push({ type: "line", x1: box.x, y1: plotBottom + fs * 0.6, x2: box.x + slot * n, y2: plotBottom + fs * 0.6, color: o.axisColor, w: 0.75 });
     for (let c = 0; c < n; c++) {
-      P.push({ type: "text", x: cx(c) - slot / 2, y: plotBottom + bottomPad + fs * 0.3, w: slot, h: catH - fs * 0.3, text: String(cats[c]), size: fs, color: o.textColor, align: "center", wrap: true, valign: "top" });
+      P.push({ type: "text", x: cx(c) - slot / 2, y: catTop, w: slot, h: catH - fs * 0.9, text: String(cats[c]), size: fs, color: o.textColor, align: "center", wrap: true, valign: "top" });
     }
 
     // ---- difference / CAGR arrows
@@ -469,7 +501,7 @@
       P.push({ type: "tri", x: xb - triW / 2, y: tb - triH, w: triW, h: triH, dir: "down", fill: col });
       const lw = textW(text, fs) + fs * 0.6;
       const lh = fs * 1.6;
-      P.push({ type: "text", x: (xa + xb) / 2 - lw / 2, y: rowY - lh / 2, w: lw, h: lh, text, size: fs, bold: true, color: isNeg ? NEG_RED : o.textColor, align: "center", fill: "#FFFFFF", stroke: col, round: true });
+      P.push({ type: "text", x: (xa + xb) / 2 - lw / 2, y: rowY - lh / 2, w: lw, h: lh, text, size: fs, color: isNeg ? NEG_RED : o.textColor, align: "center", fill: "#FFFFFF", stroke: col, round: true });
     });
 
     return { prims: P, box };
