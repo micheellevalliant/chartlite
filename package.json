@@ -1,0 +1,19 @@
+{
+  "name": "chartlite",
+  "version": "1.0.0",
+  "description": "think-cell-style chart add-in for PowerPoint with Excel copy-paste",
+  "private": true,
+  "scripts": {
+    "certs": "office-addin-dev-certs install",
+    "serve": "node serve.js",
+    "start": "office-addin-debugging start manifest.xml desktop --app powerpoint --dev-server \"node serve.js\" --dev-server-port 3000 --no-debug",
+    "stop": "office-addin-debugging stop manifest.xml",
+    "validate": "office-addin-manifest validate manifest.xml",
+    "test": "node test/render-samples.js test/out"
+  },
+  "devDependencies": {
+    "office-addin-debugging": "^5.1.1",
+    "office-addin-dev-certs": "^1.13.0",
+    "office-addin-manifest": "^1.13.0"
+  }
+}

@@ -1,0 +1,87 @@
+:root {
+  --ink: #1f2933;
+  --muted: #6b7280;
+  --line: #d9dee5;
+  --soft: #f4f6f9;
+  --accent: #1f3b57;
+  --accent-ink: #ffffff;
+  --neg: #c00000;
+  --ok: #2f6b3a;
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0 12px 16px; background: #fff; }
+
+.bar {
+  position: sticky; top: 0; z-index: 2; background: #fff;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0 8px; border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; letter-spacing: .2px; color: var(--accent); }
+.bar select { flex: 1; }
+
+.preview-wrap { margin: 10px 0 8px; }
+.preview { border: 1px solid var(--line); border-radius: 6px; background: #fff; min-height: 120px; overflow: hidden; }
+.preview svg { display: block; width: 100%; height: auto; }
+
+.actions { display: flex; gap: 8px; align-items: center; }
+.status { min-height: 18px; margin: 6px 0 4px; color: var(--muted); font-size: 12px; }
+.status.err { color: var(--neg); }
+.status.ok { color: var(--ok); }
+
+button, select, input[type=text], input[type=number] {
+  font: inherit; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  padding: 4px 8px; min-height: 28px;
+}
+button { cursor: pointer; background: var(--soft); }
+button:hover:not(:disabled) { border-color: #b9c2cd; }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+input[type=color] { width: 100%; height: 28px; border: 1px solid var(--line); border-radius: 4px; padding: 1px; background: #fff; }
+
+.panel { border-top: 1px solid var(--line); padding: 8px 0; }
+.panel > summary { cursor: pointer; font-weight: 600; padding: 2px 0 6px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.toolbar button { padding: 2px 6px; min-height: 24px; font-size: 12px; }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-bottom: 6px; }
+.grid label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.grid .span2 { grid-column: span 2; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0; }
+.check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.check.small { color: var(--muted); }
+.slider { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.slider input { flex: 1; }
+.hint { font-size: 12px; color: var(--muted); margin: 4px 0 6px; }
+
+.sheet-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
+.sheet { border-collapse: collapse; font-size: 12px; }
+.sheet td, .sheet th { border: 1px solid var(--line); padding: 0; }
+.sheet input { border: 0; border-radius: 0; width: 64px; min-height: 24px; padding: 2px 4px; text-align: right; font-size: 12px; }
+.sheet input.neg { color: var(--neg); }
+.sheet th input { text-align: center; font-weight: 600; background: var(--soft); }
+.sheet .sname input { text-align: left; width: 96px; font-weight: 600; }
+.sheet .smeta { background: var(--soft); white-space: nowrap; }
+.sheet .smeta select { border: 0; min-height: 24px; padding: 0 2px; font-size: 11px; background: transparent; }
+.sheet .swatch { width: 26px; height: 24px; border: 0; padding: 0; }
+.sheet .corner { background: var(--soft); color: var(--muted); font-size: 11px; padding: 2px 4px; }
+
+.pastezone {
+  display: block; width: 100%; resize: none; margin: 0 0 6px;
+  border: 1.5px dashed #9fb3c8; border-radius: 6px; background: #f6f9fc;
+  padding: 10px; font: inherit; font-size: 12px; color: var(--muted); text-align: center;
+}
+.pastezone:focus { outline: none; border-color: var(--accent); background: #eef3f8; }
+.pastezone.flash { border-color: var(--ok); background: #eef7ef; }
+.paste textarea { width: 100%; font-family: Consolas, monospace; font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+.row-btns { display: flex; gap: 6px; margin: 4px 0 8px; }
+
+.delta { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 4px; margin-bottom: 4px; }
+.delta button { padding: 0 8px; }
+
+.foot { color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+.reload { margin: 0 0 6px; }
+.ver { display: block; margin-top: 4px; opacity: .7; }

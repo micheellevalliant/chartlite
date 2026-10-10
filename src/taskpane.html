@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ChartLite</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="taskpane.css" />
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">ChartLite</div>
+    <select id="chartType" aria-label="Chart type">
+      <option value="stacked">Stacked bar</option>
+      <option value="clustered">Clustered bar</option>
+      <option value="stacked100">100% stacked</option>
+      <option value="waterfall">Waterfall / bridge</option>
+      <option value="line">Line</option>
+      <option value="combo">Combo (bar + line)</option>
+    </select>
+  </header>
+
+  <section class="preview-wrap">
+    <div id="preview" class="preview" aria-label="Chart preview"></div>
+  </section>
+
+  <section class="actions">
+    <button id="btnInsert" class="primary" disabled>Insert chart</button>
+    <button id="btnUpdate" disabled>Update selected</button>
+    <label class="check small" title="Redraw the selected chart on the slide as you edit">
+      <input type="checkbox" id="liveUpdate" checked /> Live
+    </label>
+  </section>
+  <div id="status" class="status" role="status">Connecting to PowerPoint…</div>
+  <button id="btnReload" class="reload" hidden>↻ Reload ChartLite</button>
+
+  <details open class="panel">
+    <summary>Data</summary>
+    <textarea id="pasteZone" class="pastezone" rows="3" spellcheck="false"
+      placeholder="📋 Paste from Excel here (Ctrl+V)&#10;Categories across the top, series down the left"></textarea>
+    <div class="toolbar">
+      <button data-act="transpose" title="Swap rows and columns (if your Excel has months going down)">⇄ Transpose</button>
+      <button data-act="addCat" title="Add category (column)">+ Category</button>
+      <button data-act="delCat" title="Remove last category">− Category</button>
+      <button data-act="addSer" title="Add series (row)">+ Series</button>
+      <button data-act="delSer" title="Remove last series">− Series</button>
+    </div>
+    <p id="wfHint" class="hint" hidden>Waterfall: first value is the start bar, then changes (+/−). Type <b>e</b> in a cell for a total bar.</p>
+    <div class="sheet-wrap"><table id="sheet" class="sheet"></table></div>
+  </details>
+
+  <details class="panel">
+    <summary>Labels &amp; numbers</summary>
+    <div class="grid">
+      <label>Decimals <input type="number" id="decimals" min="0" max="4" value="0" /></label>
+      <label>Font size <input type="number" id="fontSize" min="6" max="24" value="10" /></label>
+      <label>Prefix <input type="text" id="prefix" placeholder="e.g. Rp " /></label>
+      <label>Unit <input type="text" id="unit" placeholder="e.g. M, Bn, %" /></label>
+      <label>Number style
+        <select id="locale"><option value="en">1,234.5</option><option value="id">1.234,5</option></select>
+      </label>
+      <label>Negatives
+        <select id="negStyle"><option value="minus">−12 (red)</option><option value="paren">(12) (red)</option></select>
+      </label>
+      <label class="span2">Font <input type="text" id="fontName" placeholder="Blank = slide theme font" /></label>
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="showLabels" checked /> Value labels</label>
+      <label class="check"><input type="checkbox" id="showTotals" checked /> Totals</label>
+      <label class="check"><input type="checkbox" id="showLegend" checked /> Legend</label>
+      <label class="check"><input type="checkbox" id="pct100Labels" checked /> 100%: show shares</label>
+    </div>
+    <label class="slider">Bar width <input type="range" id="barWidth" min="0.3" max="0.9" step="0.02" value="0.62" /></label>
+  </details>
+
+  <details class="panel">
+    <summary>Growth arrows</summary>
+    <div class="grid">
+      <label>CAGR from <select id="cagrFrom"></select></label>
+      <label>to <select id="cagrTo"></select></label>
+    </div>
+    <div id="deltaList"></div>
+    <button id="addDelta">+ Difference arrow</button>
+  </details>
+
+  <details class="panel" id="wfPanel">
+    <summary>Waterfall</summary>
+    <div class="grid">
+      <label>Start / total <input type="color" id="wfTotal" value="#1f3b57" /></label>
+      <label>Increase <input type="color" id="wfUp" value="#5b8c5a" /></label>
+      <label>Decrease <input type="color" id="wfDown" value="#c00000" /></label>
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="connectors" checked /> Connector lines</label>
+      <label class="check"><input type="checkbox" id="axisBreak" checked /> Auto axis break</label>
+    </div>
+  </details>
+
+  <footer class="foot">Select a ChartLite chart on the slide to edit it here. Resize or move the chart freely — the next update re-lays it out to fit.<span id="ver" class="ver"></span></footer>
+
+  <script src="engine.js"></script>
+  <script src="render-ppt.js"></script>
+  <script src="taskpane.js"></script>
+</body>
+</html>
