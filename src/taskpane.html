@@ -73,6 +73,39 @@
     <label class="slider">Bar width <input type="range" id="barWidth" min="0.3" max="0.9" step="0.02" value="0.62" /></label>
   </details>
 
+  <details class="panel" open>
+    <summary>Scale &amp; lines</summary>
+    <div class="grid">
+      <label>Axis min <input type="text" id="yMin" placeholder="auto" title="Lowest value on the scale, e.g. 4000000 or 4 (same units as your data)" /></label>
+      <label>Axis max <input type="text" id="yMax" placeholder="auto" title="Highest value on the scale" /></label>
+      <label class="y2">Axis 2 min <input type="text" id="y2Min" placeholder="auto" /></label>
+      <label class="y2">Axis 2 max <input type="text" id="y2Max" placeholder="auto" /></label>
+    </div>
+    <div class="row-btns">
+      <button id="btnFitScale" title="Start the scale just below your lowest value so the trend is visible">Fit scale to data</button>
+      <button id="btnAutoScale" title="Clear min/max and let ChartLite decide">Auto scale</button>
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="smooth" /> Smooth lines</label>
+    </div>
+    <div class="grid">
+      <label>Dot size
+        <span class="stepper">
+          <button type="button" id="dotMinus" title="Smaller dots">−</button>
+          <input type="text" id="markerSize" placeholder="auto" title="Dot size in points (0 = no dots)" />
+          <button type="button" id="dotPlus" title="Bigger dots">+</button>
+        </span>
+      </label>
+      <label>Dot fill
+        <select id="markerFill">
+          <option value="solid">Solid</option>
+          <option value="white">Blank (white)</option>
+          <option value="none">Blank (no fill)</option>
+        </select>
+      </label>
+    </div>
+  </details>
+
   <details class="panel">
     <summary>Growth arrows</summary>
     <div class="grid">

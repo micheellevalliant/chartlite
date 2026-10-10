@@ -66,7 +66,18 @@ Move or resize the chart group freely — the next update re-lays it out to the 
 
 Note: manual tweaks made directly to shapes inside a chart (recoloring one bar, editing a label) are replaced on the next update. Make changes in the panel instead, or ungroup the chart to finalize it by hand.
 
-## 4. Chart-type notes
+## 4. Scale & lines
+
+- **Axis min / Axis max** — set where the value scale starts and ends. If your values sit around 5,000,000, set Axis min to 4,000,000 (type it the way your data is written) so the trend is visible instead of flat bars from zero. Leave blank for automatic.
+- **Fit scale to data** — sets Axis min just below your lowest value in one click. **Auto scale** clears it again.
+- **Axis 2 min / max** — appears for combo charts, for a line on the second axis.
+- **Smooth lines** — on/off. The curve passes exactly through every point and never overshoots above or below your real values.
+- **Dot size − / +** — bigger or smaller line markers; `0` hides them.
+- **Dot fill** — *Solid*, *Blank (white)* (hollow look, line hidden inside the dot) or *Blank (no fill)* (fully transparent).
+
+These settings are saved with the chart, so they come back when you select it again.
+
+## 5. Chart-type notes
 
 **Waterfall** — uses the first series. The first value is the start bar, following values are changes (+/−), and typing **`e`** in a cell creates a total bar at that point. Example — a travel budget estimate:
 
@@ -80,7 +91,7 @@ Increases are green, decreases red, start/total bars dark (change under *Waterfa
 
 **Growth arrows** — *CAGR from/to* draws a compound-growth arrow between two categories (based on the category totals). *+ Difference arrow* adds a % change or absolute difference arrow; add several and they stack.
 
-## 5. Use it permanently without running a server (optional)
+## 6. Use it permanently without running a server (optional)
 
 Host the contents of `src/` on any HTTPS address (GitHub Pages or an internal web server — it's static files, and no data leaves your PC: everything runs inside PowerPoint). Then:
 

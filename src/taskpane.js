@@ -36,6 +36,11 @@
     el.className = "status" + (kind ? " " + kind : "");
   }
 
+  function numOpt(id) {
+    const v = E.parseCell($(id).value, locale);
+    return typeof v === "number" ? v : null;
+  }
+
   function readOptions() {
     const v = (id) => $(id).value;
     const c = (id) => $(id).checked;
@@ -58,6 +63,11 @@
       wf: { start: v("wfTotal"), total: v("wfTotal"), up: v("wfUp"), down: v("wfDown") },
       connectors: c("connectors"),
       axisBreak: c("axisBreak"),
+      yMin: numOpt("yMin"), yMax: numOpt("yMax"),
+      y2Min: numOpt("y2Min"), y2Max: numOpt("y2Max"),
+      smooth: c("smooth"),
+      markerSize: numOpt("markerSize"),
+      markerFill: v("markerFill"),
     };
   }
 
@@ -71,6 +81,9 @@
     chk("showLabels", o.showLabels); chk("showTotals", o.showTotals); chk("showLegend", o.showLegend);
     chk("pct100Labels", o.pct100Labels); chk("connectors", o.connectors); chk("axisBreak", o.axisBreak);
     if (o.wf) { set("wfTotal", o.wf.total); set("wfUp", o.wf.up); set("wfDown", o.wf.down); }
+    ["yMin", "yMax", "y2Min", "y2Max", "markerSize"].forEach((id) => { $(id).value = o[id] === null || o[id] === undefined ? "" : toRaw(o[id], locale); });
+    chk("smooth", o.smooth);
+    set("markerFill", o.markerFill || "solid");
     state.deltas = (o.deltas || []).map((d) => ({ from: d.from, to: d.to, mode: d.mode || "pct" }));
     renderArrowControls(o.cagr || null);
   }
@@ -142,6 +155,7 @@
     });
     t.innerHTML = html;
     $("wfHint").hidden = !wf;
+    document.querySelectorAll(".y2").forEach((el) => { el.style.display = combo ? "" : "none"; });
     $("wfPanel").style.display = wf ? "" : "none";
     renderArrowControls();
   }
@@ -384,6 +398,54 @@
     renderArrowControls(); refresh();
   });
 
+  // ------------------------------------------------------------------ scale & dots
+  function allValues(filter) {
+    const out = [];
+    const spec = buildSpec();
+    spec.series.forEach((s, i) => {
+      if (filter && !filter(s, i)) return;
+      s.values.forEach((v) => { if (typeof v === "number") out.push(v); });
+    });
+    return out;
+  }
+  // Round a number down/up to a "nice" step (1, 2, 2.5, 5 x 10^k)
+  function niceStep(span) {
+    const p = Math.pow(10, Math.floor(Math.log10(span || 1)));
+    const f = span / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+  }
+  $("btnFitScale").addEventListener("click", () => {
+    const sec = (s) => state.type === "combo" && s.kind === "line" && s.axis === "secondary";
+    let vals = allValues((s) => !sec(s));
+    if (state.type === "stacked" || state.type === "combo") {
+      // stacked bars: the scale must fit the stack totals, not single segments
+      const tot = state.categories.map((_, c) => buildSpec().series.filter((s) => !sec(s) && s.kind !== "line")
+        .reduce((a, s) => a + (typeof s.values[c] === "number" ? s.values[c] : 0), 0));
+      const lines = allValues((s) => !sec(s) && s.kind === "line" && state.type === "combo");
+      vals = tot.concat(lines);
+    }
+    if (!vals.length) return;
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const step = niceStep((hi - lo) / 4 || Math.abs(lo) * 0.1);
+    $("yMin").value = toRaw(Math.floor((lo - step * 0.5) / step) * step, locale);
+    $("yMax").value = "";
+    setStatus("Scale now starts at " + $("yMin").value + ". Adjust Axis min/max to fine-tune.", "ok");
+    refresh();
+  });
+  $("btnAutoScale").addEventListener("click", () => {
+    ["yMin", "yMax", "y2Min", "y2Max"].forEach((id) => { $(id).value = ""; });
+    refresh();
+  });
+  function stepDot(delta) {
+    const fs = parseFloat($("fontSize").value) || 10;
+    const cur = numOpt("markerSize");
+    const base = cur === null ? Math.round(fs * 0.55) : cur;
+    $("markerSize").value = String(Math.max(0, Math.min(20, base + delta)));
+    refresh();
+  }
+  $("dotMinus").addEventListener("click", () => stepDot(-1));
+  $("dotPlus").addEventListener("click", () => stepDot(1));
+
   // ------------------------------------------------------------------ options
   document.querySelectorAll(".panel input, .panel select").forEach((el) => {
     if (el.closest("#sheet") || el.closest("#deltaList")) return;
@@ -393,6 +455,10 @@
   $("locale").addEventListener("change", () => {
     const old = locale, nw = $("locale").value;
     state.series.forEach((s) => { s.raw = s.raw.map((r) => toRaw(E.parseCell(r, old), nw)); });
+    ["yMin", "yMax", "y2Min", "y2Max", "markerSize"].forEach((id) => {
+      const v = E.parseCell($(id).value, old);
+      $(id).value = typeof v === "number" ? toRaw(v, nw) : "";
+    });
     locale = nw;
     renderSheet(); refresh();
   });
@@ -489,7 +555,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.0.3";
+  const VERSION = "1.1.0";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 

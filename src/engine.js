@@ -32,6 +32,11 @@
     showLabels: true,
     showLegend: true,
     connectors: true,
+    yMin: null, yMax: null,      // manual value-axis range (blank = auto)
+    y2Min: null, y2Max: null,    // combo Axis 2 range
+    smooth: false,               // smooth (curved) lines
+    markerSize: null,            // dot diameter in pt (null = auto, 0 = no dots)
+    markerFill: "solid",         // solid | white | none
     barWidth: 0.62,        // fraction of the category slot used by bars
     pct100Labels: true,    // 100% chart: label segments with share instead of value
     cagr: null,            // {from, to}
@@ -207,7 +212,10 @@
       }));
       if (low > 0 && (vmax - low) / vmax < 0.5) { vmin = Math.max(0, low - (vmax - low) * 1.2); broken = vmin > 0; }
     }
-    if (vmax === vmin) vmax = vmin + 1;
+    const isNum = (v) => typeof v === "number" && isFinite(v);
+    if (isNum(o.yMin)) { vmin = o.yMin; broken = false; }
+    if (isNum(o.yMax)) vmax = o.yMax;
+    if (vmax <= vmin) vmax = vmin + (Math.abs(vmin) || 1) * 0.1;
 
     // ---- vertical bands (top → bottom)
     const multiSeries = !isWF && spec.series.length > 1;
@@ -230,7 +238,9 @@
     const secondaryBand = type === "combo" && lineIdx.some((i) => spec.series[i].axis === "secondary");
     const barH = secondaryBand ? plotH * 0.62 : plotH;   // primary scale height
     const Y = (v) => plotBottom - ((v - vmin) / (vmax - vmin)) * barH;
-    const yBase = Y(Math.max(0, vmin));
+    // clamp to the plot so values outside a manual axis range don't spill over labels
+    const Yc = (v) => Math.min(plotBottom, Math.max(plotTop - fs * 0.5, Y(v)));
+    const yBase = Yc(Math.max(0, vmin));
 
     let smin = 0, smax = 1;
     if (secondary.length) {
@@ -240,6 +250,9 @@
       }));
       const span = (smax - smin) || Math.abs(smax) || 1;
       smin -= span * 0.05; smax += span * 0.05;
+      if (isNum(o.y2Min)) smin = o.y2Min;
+      if (isNum(o.y2Max)) smax = o.y2Max;
+      if (smax <= smin) smax = smin + (Math.abs(smin) || 1) * 0.1;
     }
     // secondary lines live in the upper part of the plot so they don't sit on the bars
     const Y2 = (v) => plotTop + (1 - (v - smin) / (smax - smin)) * plotH * 0.26;
@@ -248,6 +261,12 @@
     const barW = slot * o.barWidth;
     const cx = (c) => box.x + slot * (c + 0.5);
     const labelTop = [];   // per category: highest y used (for arrows)
+    const ms = isNum(o.markerSize) ? Math.max(0, o.markerSize) : fs * 0.55;
+    const dotStyle = (col, size) => o.markerFill === "none"
+      ? { fill: null, stroke: col, strokeW: Math.max(1, size * 0.18) }
+      : o.markerFill === "white"
+        ? { fill: "#FFFFFF", stroke: col, strokeW: Math.max(1, size * 0.18) }
+        : { fill: col, stroke: "#FFFFFF", strokeW: 0.75 };
 
     // ---- legend
     if (legendH) {
@@ -258,7 +277,7 @@
         const isLine = lineIdx.indexOf(i) >= 0;
         if (isLine) {
           P.push({ type: "line", x1: lx, y1: ly + fs * 0.6, x2: lx + fs * 1.4, y2: ly + fs * 0.6, color: col, w: 2 });
-          P.push({ type: "dot", x: lx + fs * 0.45, y: ly + fs * 0.35, w: fs * 0.5, h: fs * 0.5, fill: col });
+          if (ms > 0) P.push(Object.assign({ type: "dot", x: lx + fs * 0.45, y: ly + fs * 0.35, w: fs * 0.5, h: fs * 0.5 }, dotStyle(col, fs * 0.5)));
         } else {
           P.push({ type: "rect", x: lx + fs * 0.2, y: ly + fs * 0.1, w: fs, h: fs, fill: col });
         }
@@ -284,7 +303,8 @@
           const bw = barW / k;
           e.segs.forEach((s, j) => {
             const x = cx(c) - barW / 2 + j * bw;
-            const y1 = Y(s.hi), y2 = Y(s.lo);
+            const y1 = Yc(s.hi), y2 = Yc(s.lo);
+            if (y2 - y1 < 0.3 && s.v !== 0) return;   // entirely outside a manual axis range
             const col = seriesColor(spec, o, s.i);
             P.push({ type: "rect", x: x + bw * 0.04, y: y1, w: bw * 0.92, h: Math.max(0.5, y2 - y1), fill: col, role: "bar" });
             if (o.showLabels) {
@@ -297,7 +317,8 @@
           });
         } else {
           e.segs.forEach((s) => {
-            const y1 = Y(s.hi), y2 = Math.min(Y(s.lo), plotBottom);
+            const y1 = Yc(s.hi), y2 = Yc(s.lo);
+            if (y2 - y1 < 0.3 && s.v !== 0) return;
             let col = seriesColor(spec, o, s.i);
             if (isWF) col = o.wf[s.wfKind] || col;
             const x = cx(c) - barW / 2;
@@ -335,13 +356,13 @@
           if (!isWF && o.showTotals && (barIdx.length > 1 || type === "stacked100")) {
             const t = e.total;
             const lbl = formatNumber(t, o);
-            const ly = t >= 0 || type === "stacked100" ? Y(e.top) - fs * 1.55 : Y(e.bottom) + fs * 0.15;
+            const ly = t >= 0 || type === "stacked100" ? Yc(e.top) - fs * 1.55 : Yc(e.bottom) + fs * 0.15;
             P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.45, text: lbl, size: fs, bold: true, color: t < 0 ? NEG_RED : o.textColor, align: "center" });
             top = Math.min(top, ly);
           } else if (!isWF && o.showLabels && barIdx.length === 1 && type !== "stacked100") {
             // single-series stacked == plain bar: put value above instead of inside
             const t = e.total;
-            const ly = t >= 0 ? Y(e.top) - fs * 1.5 : Y(e.bottom) + fs * 0.1;
+            const ly = t >= 0 ? Yc(e.top) - fs * 1.5 : Yc(e.bottom) + fs * 0.1;
             P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.4, text: formatNumber(t, o), size: fs, color: t < 0 ? NEG_RED : o.textColor, align: "center" });
             top = Math.min(top, ly);
           }
@@ -352,7 +373,7 @@
       // waterfall connectors
       if (isWF && o.connectors) {
         for (let c = 0; c < n - 1; c++) {
-          const level = Y(cat[c].total);
+          const level = Yc(cat[c].total);
           P.push({ type: "line", x1: cx(c) + barW / 2, y1: level, x2: cx(c + 1) - barW / 2, y2: level, color: o.axisColor, w: 0.75, dash: "Dash" });
         }
       }
@@ -363,19 +384,26 @@
     lineIdx.forEach((i) => {
       const s = spec.series[i];
       const col = seriesColor(spec, o, i);
-      const yf = secondary.indexOf(i) >= 0 ? Y2 : Y;
+      const yf = secondary.indexOf(i) >= 0 ? Y2 : Yc;
       const pts = [];
       for (let c = 0; c < n; c++) {
         const v = s.values[c];
         pts.push(typeof v === "number" ? { x: cx(c), y: yf(v), v, c } : null);
       }
-      for (let k = 0; k < pts.length - 1; k++) {
-        if (pts[k] && pts[k + 1]) P.push({ type: "line", x1: pts[k].x, y1: pts[k].y, x2: pts[k + 1].x, y2: pts[k + 1].y, color: col, w: 2 });
-      }
-      const ms = fs * 0.55;
+      // split into runs of consecutive values (blank cells break the line)
+      const runs = [];
+      let run = [];
+      pts.forEach((p) => { if (p) run.push(p); else { if (run.length) runs.push(run); run = []; } });
+      if (run.length) runs.push(run);
+      runs.forEach((r) => {
+        const path = o.smooth && r.length > 2 ? smoothPath(r, Math.max(4, Math.round(slot / 9))) : r;
+        for (let k = 0; k < path.length - 1; k++) {
+          P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: 2 });
+        }
+      });
       pts.forEach((p) => {
         if (!p) return;
-        P.push({ type: "dot", x: p.x - ms / 2, y: p.y - ms / 2, w: ms, h: ms, fill: col, stroke: "#FFFFFF", strokeW: 0.75 });
+        if (ms > 0) P.push(Object.assign({ type: "dot", x: p.x - ms / 2, y: p.y - ms / 2, w: ms, h: ms }, dotStyle(col, ms)));
         if (o.showLabels) {
           const lbl = formatNumber(p.v, o, s.unit !== undefined ? { unit: s.unit } : {});
           const overBars = barIdx.length && secondary.indexOf(i) < 0;   // only then can labels collide with bars
@@ -390,12 +418,13 @@
       const here = lineLabels.filter((L) => L.p.c === c).sort((a, b) => a.p.y - b.p.y);
       let prevBottom = -Infinity;
       here.forEach((L, k) => {
-        let ly = L.p.y - fs * 1.75;
-        if (ly < prevBottom + 1) ly = L.p.y + fs * 0.45;              // flip below the point
+        const above = L.p.y - Math.max(fs * 1.75, ms / 2 + fs * 1.65);
+        let ly = above;
+        if (ly < prevBottom + 1) ly = L.p.y + Math.max(fs * 0.45, ms / 2 + fs * 0.1);   // flip below the point
         const below = here[k + 1];
         if (ly > L.p.y && below && ly + lh > below.p.y - fs * 0.4) {
           // squeezed between two close points: keep it above, nudged clear of the label above
-          ly = Math.max(prevBottom + 1, L.p.y - fs * 1.75);
+          ly = Math.max(prevBottom + 1, above);
         }
         // tight white backing keeps the number readable where a line passes behind it
         const lw = textW(L.lbl, fs) * 0.92;
@@ -446,6 +475,30 @@
     return { prims: P, box };
   }
 
+  // Monotone cubic (Fritsch-Carlson) through points with increasing x; returns sampled points.
+  // Smooth like Excel's smoothed line, but never overshoots above/below a data point.
+  function smoothPath(pts, steps) {
+    const n = pts.length, d = [], m = new Array(n);
+    for (let i = 0; i < n - 1; i++) d.push((pts[i + 1].y - pts[i].y) / (pts[i + 1].x - pts[i].x));
+    m[0] = d[0]; m[n - 1] = d[n - 2];
+    for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+    for (let i = 0; i < n - 1; i++) {
+      if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+      const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b;
+      if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+    }
+    const out = [{ x: pts[0].x, y: pts[0].y }];
+    for (let i = 0; i < n - 1; i++) {
+      const x0 = pts[i].x, x1 = pts[i + 1].x, y0 = pts[i].y, y1 = pts[i + 1].y, hx = x1 - x0;
+      for (let k = 1; k <= steps; k++) {
+        const t = k / steps, t2 = t * t, t3 = t2 * t;
+        const y = (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * hx * m[i] + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * hx * m[i + 1];
+        out.push({ x: x0 + hx * t, y });
+      }
+    }
+    return out;
+  }
+
   function darken(hex) {
     const h = hex.replace("#", "");
     const k = luminance(hex) > 0.45 ? 0.55 : 1;
@@ -470,7 +523,7 @@
       else if (p.type === "tri") {
         const pts = p.dir === "down" ? `${p.x},${p.y} ${p.x + p.w},${p.y} ${p.x + p.w / 2},${p.y + p.h}` : `${p.x},${p.y + p.h} ${p.x + p.w},${p.y + p.h} ${p.x + p.w / 2},${p.y}`;
         out.push(`<polygon points="${pts}" fill="${p.fill}"/>`);
-      } else if (p.type === "dot") out.push(`<ellipse cx="${p.x + p.w / 2}" cy="${p.y + p.h / 2}" rx="${p.w / 2}" ry="${p.h / 2}" fill="${p.fill}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.strokeW || 0.75}"` : ""}/>`);
+      } else if (p.type === "dot") out.push(`<ellipse cx="${p.x + p.w / 2}" cy="${p.y + p.h / 2}" rx="${p.w / 2}" ry="${p.h / 2}" fill="${p.fill || "none"}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.strokeW || 0.75}"` : ""}/>`);
       else if (p.type === "text") {
         if (p.fill || p.stroke) out.push(`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${p.round ? p.h / 2 : 0}" fill="${p.fill || "none"}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="0.75"` : ""}/>`);
         const anchor = p.align === "left" ? "start" : p.align === "right" ? "end" : "middle";
