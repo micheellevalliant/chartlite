@@ -23,7 +23,9 @@
   function addSegment(shapes, p, canRotate) {
     if (p.join) {
       // pieces of one polyline: overlap neighbours by half the line width at each end
-      const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1) || 1, e = (p.w || 1) * 0.5;
+      // just enough to close anti-aliasing seams; bends are gentle enough (<= 2.5 deg) that a
+      // longer overlap would only poke out as a spur on the outside of the bend
+      const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1) || 1, e = Math.min((p.w || 1) * 0.5, 0.4);
       const ux = (p.x2 - p.x1) / len, uy = (p.y2 - p.y1) / len;
       p = Object.assign({}, p, { x1: p.x1 - ux * e, y1: p.y1 - uy * e, x2: p.x2 + ux * e, y2: p.y2 + uy * e });
     }

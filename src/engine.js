@@ -388,6 +388,7 @@
 
     // ---- lines
     const lineLabels = [];   // collected first so overlapping labels can be moved apart
+    const polylines = [];    // every drawn line path, so labels can keep clear of them
     lineIdx.forEach((i) => {
       const s = spec.series[i];
       const col = seriesColor(spec, o, i);
@@ -403,7 +404,8 @@
       pts.forEach((p) => { if (p) run.push(p); else { if (run.length) runs.push(run); run = []; } });
       if (run.length) runs.push(run);
       runs.forEach((r) => {
-        const path = o.smooth && r.length > 2 ? smoothPath(r, Math.max(4, Math.round(slot / 9))) : r;
+        const path = o.smooth && r.length > 2 ? smoothPath(r, 2.5) : r;
+        polylines.push(path);
         for (let k = 0; k < path.length - 1; k++) {
           P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: o.lineWidth || 1.75, join: true });
         }
@@ -419,30 +421,53 @@
       });
     });
     // think-cell style placement, per category: the highest point's label goes above it,
-    // the lowest point's below it, points in between take whichever side has room
-    // (or are left unlabelled rather than overlap). No boxes behind the numbers.
+    // the lowest point's below it. A label never sits on a line or another label: if its
+    // preferred spot is crossed by a line it tries the other side, then diagonally beside
+    // the dot, and is left out only if nothing is free. No boxes behind the numbers.
     const lh = fs * 1.3;
     const gapA = Math.max(fs * 0.25, ms / 2 + fs * 0.2);   // clearance between dot and label
     const lastLabel = {};
+    const placed = [];   // all label rects so far
+    const segHitsRect = (x1, y1, x2, y2, r) => {
+      // Liang-Barsky clip of the segment against the rectangle
+      let t0 = 0, t1 = 1;
+      const dx = x2 - x1, dy = y2 - y1;
+      const pq = [[-dx, x1 - r.x], [dx, r.x + r.w - x1], [-dy, y1 - r.y], [dy, r.y + r.h - y1]];
+      for (const [p, q] of pq) {
+        if (p === 0) { if (q < 0) return false; continue; }
+        const t = q / p;
+        if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+        else { if (t < t0) return false; if (t < t1) t1 = t; }
+      }
+      return true;
+    };
+    const lineHits = (r) => polylines.some((pl) => {
+      for (let k = 0; k < pl.length - 1; k++) if (segHitsRect(pl[k].x, pl[k].y, pl[k + 1].x, pl[k + 1].y, r)) return true;
+      return false;
+    });
+    const dotHits = (r) => lineLabels.some((L) => L.p.x + ms / 2 > r.x && L.p.x - ms / 2 < r.x + r.w && L.p.y + ms / 2 > r.y && L.p.y - ms / 2 < r.y + r.h);
+    const labelHits = (r) => placed.some((q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y);
     for (let c = 0; c < n; c++) {
       const here = lineLabels.filter((L) => L.p.c === c).sort((a, b) => a.p.y - b.p.y);
-      const used = [];   // occupied vertical spans [top, bottom] in this column
-      const free = (t, b) => used.every(([u0, u1]) => b <= u0 || t >= u1);
       here.forEach((L, k) => {
-        const aboveY = L.p.y - gapA - lh, belowY = L.p.y + gapA;
+        const lw = textW(L.lbl, fs) - 2;
         const lowest = k === here.length - 1 && here.length > 1;
-        const prevP = here[k - 1], nextP = here[k + 1];
-        const fitsAbove = free(aboveY, aboveY + lh) && (!prevP || aboveY >= prevP.p.y + ms / 2);
-        const fitsBelow = free(belowY, belowY + lh) && (!nextP || belowY + lh <= nextP.p.y - ms / 2 - gapA - lh);
-        let ly = null;
-        if (lowest) ly = fitsBelow || !nextP ? belowY : (fitsAbove ? aboveY : null);
-        else ly = fitsAbove ? aboveY : (fitsBelow ? belowY : null);
-        if (ly === null) return;          // too crowded: skip rather than overlap
-        used.push([ly, ly + lh]);
-        const lw = Math.max(textW(L.lbl, fs), fs * 2);
-        P.push({ type: "text", x: L.p.x - lw / 2, y: ly, w: lw, h: lh, text: L.lbl, size: fs, color: L.p.v < 0 ? NEG_RED : o.textColor, align: "center" });
-        if (ly < L.p.y) labelTop[c] = Math.min(labelTop[c] === undefined ? Infinity : labelTop[c], ly);
-        lastLabel[L.series + ":" + c] = lw;
+        const up = { x: L.p.x - lw / 2, y: L.p.y - gapA - lh };
+        const down = { x: L.p.x - lw / 2, y: L.p.y + gapA };
+        const side = lw / 2 + ms / 2 + fs * 0.15;
+        const cands = (lowest ? [down, up] : [up, down]).concat([
+          { x: L.p.x + side - lw / 2, y: up.y + lh * 0.35 }, { x: L.p.x - side - lw / 2, y: up.y + lh * 0.35 },
+          { x: L.p.x + side - lw / 2, y: down.y - lh * 0.35 }, { x: L.p.x - side - lw / 2, y: down.y - lh * 0.35 },
+        ]).map((q) => ({ x: q.x, y: q.y, w: lw, h: lh }));
+        // shrink the test box a little so a line merely grazing a corner doesn't count
+        const inner = (r) => ({ x: r.x + 1.5, y: r.y + lh * 0.18, w: r.w - 3, h: r.h - lh * 0.36 });
+        let r = cands.find((q) => !labelHits(q) && !lineHits(inner(q)) && !dotHits(inner(q)));
+        if (!r) r = cands.slice(0, 2).find((q) => !labelHits(q));   // accept a line crossing over an overlap
+        if (!r) return;                                              // nowhere sensible: leave unlabelled
+        placed.push(r);
+        P.push({ type: "text", x: r.x, y: r.y, w: r.w, h: r.h, text: L.lbl, size: fs, color: L.p.v < 0 ? NEG_RED : o.textColor, align: "center" });
+        if (r.y < L.p.y) labelTop[c] = Math.min(labelTop[c] === undefined ? Infinity : labelTop[c], r.y);
+        lastLabel[L.series + ":" + c] = Math.abs(r.x + r.w / 2 - L.p.x) < 1 ? lw : 0;
       });
     }
 
@@ -457,10 +482,16 @@
         const lw = lastLabel[i + ":" + c] || 0;
         return { i, x: x + Math.max(ms / 2, lw / 2) + fs * 0.5, y, name: spec.series[i].name || "Series " + (i + 1) };
       }).filter(Boolean).sort((a, b) => a.y - b.y);
-      const gap = fs * 1.25;
-      for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < gap) ends[k].y = ends[k - 1].y + gap;
       ends.forEach((e) => {
-        P.push({ type: "text", x: e.x, y: e.y - lh / 2, w: textW(e.name, fs) + 2, h: lh, text: e.name, size: fs, color: darken(seriesColor(spec, o, e.i)), align: "left" });
+        // beside the last dot; nudged up/down (or further right) if a line or label is in the way
+        const w = textW(e.name, fs) + 2;
+        const tries = [0, -0.9, 0.9, -1.8, 1.8].map((k) => ({ x: e.x, y: e.y - lh / 2 + k * lh, w, h: lh }))
+          .concat([0, -0.9, 0.9].map((k) => ({ x: e.x + fs * 1.5, y: e.y - lh / 2 + k * lh, w, h: lh })));
+        const inner = (r) => ({ x: r.x + 1, y: r.y + lh * 0.18, w: r.w - 2, h: r.h - lh * 0.36 });
+        const r = tries.find((q) => !labelHits(q) && !lineHits(inner(q)) && !dotHits(inner(q))) ||
+                  tries.find((q) => !labelHits(q)) || tries[0];
+        placed.push(r);
+        P.push({ type: "text", x: r.x, y: r.y, w: r.w, h: r.h, text: e.name, size: fs, color: darken(seriesColor(spec, o, e.i)), align: "left" });
       });
     }
 
@@ -519,13 +550,30 @@
       const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b;
       if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
     }
-    const out = [{ x: pts[0].x, y: pts[0].y }];
+    // dense samples (~every 0.75pt along x), data points always kept
+    const dense = [{ x: pts[0].x, y: pts[0].y, keep: true }];
     for (let i = 0; i < n - 1; i++) {
       const x0 = pts[i].x, x1 = pts[i + 1].x, y0 = pts[i].y, y1 = pts[i + 1].y, hx = x1 - x0;
-      for (let k = 1; k <= steps; k++) {
-        const t = k / steps, t2 = t * t, t3 = t2 * t;
+      const k = Math.max(8, Math.ceil(hx / 0.75));
+      for (let j = 1; j <= k; j++) {
+        const t = j / k, t2 = t * t, t3 = t2 * t;
         const y = (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * hx * m[i] + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * hx * m[i + 1];
-        out.push({ x: x0 + hx * t, y });
+        dense.push({ x: x0 + hx * t, y, keep: j === k });
+      }
+    }
+    // keep a sample when the curve has turned more than maxTurn since the last kept point,
+    // so bends get many short pieces (no visible corners) and straight stretches few
+    const maxTurn = (steps || 2.5) * Math.PI / 180;
+    const out = [dense[0]];
+    let last = dense[0], dir = null;
+    for (let i = 1; i < dense.length; i++) {
+      const p = dense[i];
+      const a = Math.atan2(p.y - last.y, p.x - last.x);
+      if (dir === null) dir = a;
+      const next = dense[i + 1];
+      const turn = next ? Math.abs(Math.atan2(next.y - p.y, next.x - p.x) - dir) : 0;
+      if (p.keep || turn > maxTurn || Math.hypot(p.x - last.x, p.y - last.y) > 40) {
+        out.push({ x: p.x, y: p.y }); last = p; dir = null;
       }
     }
     return out;
