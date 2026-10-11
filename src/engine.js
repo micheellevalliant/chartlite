@@ -484,10 +484,19 @@
       pts.forEach((p) => { if (p) run.push(p); else { if (run.length) runs.push(run); run = []; } });
       if (run.length) runs.push(run);
       runs.forEach((r) => {
-        const path = o.smooth && r.length > 2 ? smoothPath(r, 2.5) : r;
+        const smooth = o.smooth && r.length > 2;
+        const path = smooth ? smoothPath(r, 2.5) : r;
         polylines.push(path);
+        const lw = o.lineWidth || 1.75;
+        if (smooth) {
+          // exact curve (drawn as one vector graphic where Office supports it) ...
+          const xs = path.map((q) => q.x), ys = path.map((q) => q.y);
+          P.push({ type: "curve", d: bezierPath(r), color: col, w: lw,
+            bbox: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } });
+        }
+        // ... and short straight pieces as the fallback for Office versions without it
         for (let k = 0; k < path.length - 1; k++) {
-          P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: o.lineWidth || 1.75, join: true });
+          P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: lw, join: true, smoothPiece: smooth });
         }
       });
       const lpos = posFor(i);
@@ -542,6 +551,7 @@
         if (r.y < L.p.y) labelTop[c] = Math.min(labelTop[c] === undefined ? Infinity : labelTop[c], r.y);
         lastLabel[L.series + ":" + c] = lw;
       });
+      let prevMid = null;   // labels keep the same top-to-bottom order as their points
       here.forEach((L, k) => {
         if (L.pos !== "auto") return;
         const lw = textW(L.lbl, fs) - 2;
@@ -555,11 +565,13 @@
         ]).map((q) => ({ x: q.x, y: q.y, w: lw, h: lh }));
         // shrink the test box a little so a line merely grazing a corner doesn't count
         const inner = (r) => ({ x: r.x + 1.5, y: r.y + lh * 0.18, w: r.w - 3, h: r.h - lh * 0.36 });
-        let r = cands.find((q) => !labelHits(q) && !lineHits(inner(q)) && !dotHits(inner(q)));
-        if (!r) r = cands.slice(0, 2).find((q) => !labelHits(q));   // accept a line crossing over an overlap
-        if (!r) return;                                              // nowhere sensible: leave unlabelled
+        const inOrder = (q) => prevMid === null || q.y + q.h / 2 > prevMid + lh * 0.3;
+        let r = cands.find((q) => inOrder(q) && !labelHits(q) && !lineHits(inner(q)) && !dotHits(inner(q)));
+        if (!r) r = cands.slice(0, 2).find((q) => inOrder(q) && !labelHits(q));   // accept a line crossing over an overlap
+        if (!r) return;                                                            // nowhere sensible: leave unlabelled
+        prevMid = r.y + r.h / 2;
         placed.push(r);
-        P.push({ type: "text", x: r.x, y: r.y, w: r.w, h: r.h, text: L.lbl, size: fs, color: L.p.v < 0 ? NEG_RED : o.textColor, align: "center" });
+        P.push({ type: "text", x: r.x, y: r.y, w: r.w, h: r.h, text: L.lbl, size: fs, color: L.p.v < 0 ? NEG_RED : o.textColor, align: "center", ref: { series: L.series, c, py: L.p.y } });
         if (r.y < L.p.y) labelTop[c] = Math.min(labelTop[c] === undefined ? Infinity : labelTop[c], r.y);
         lastLabel[L.series + ":" + c] = Math.abs(r.x + r.w / 2 - L.p.x) < 1 ? lw : 0;
       });
@@ -645,7 +657,7 @@
 
   // Monotone cubic (Fritsch-Carlson) through points with increasing x; returns sampled points.
   // Smooth like Excel's smoothed line, but never overshoots above/below a data point.
-  function smoothPath(pts, steps) {
+  function monotoneTangents(pts) {
     const n = pts.length, d = [], m = new Array(n);
     for (let i = 0; i < n - 1; i++) d.push((pts[i + 1].y - pts[i].y) / (pts[i + 1].x - pts[i].x));
     m[0] = d[0]; m[n - 1] = d[n - 2];
@@ -655,6 +667,23 @@
       const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b;
       if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
     }
+    return m;
+  }
+
+  // The same curve as smoothPath, written as exact cubic Bezier segments (SVG path data).
+  // Hermite -> Bezier: control points sit a third of the way along each tangent.
+  function bezierPath(pts) {
+    const m = monotoneTangents(pts), f = (v) => +v.toFixed(2);
+    let d = `M${f(pts[0].x)} ${f(pts[0].y)}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i], p1 = pts[i + 1], h = (p1.x - p0.x) / 3;
+      d += ` C${f(p0.x + h)} ${f(p0.y + m[i] * h)} ${f(p1.x - h)} ${f(p1.y - m[i + 1] * h)} ${f(p1.x)} ${f(p1.y)}`;
+    }
+    return d;
+  }
+
+  function smoothPath(pts, steps) {
+    const n = pts.length, m = monotoneTangents(pts);
     // dense samples (~every 0.75pt along x), data points always kept
     const dense = [{ x: pts[0].x, y: pts[0].y, keep: true }];
     for (let i = 0; i < n - 1; i++) {
@@ -704,6 +733,8 @@
     out.push(`<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="#FFFFFF"/>`);
     layout.prims.forEach((p) => {
       if (p.type === "rect") out.push(`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${p.fill}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.strokeW || 0.75}"` : ""}/>`);
+      else if (p.type === "curve") out.push(`<path d="${p.d}" fill="none" stroke="${p.color}" stroke-width="${p.w}" stroke-linecap="round" stroke-linejoin="round"/>`);
+      else if (p.type === "line" && p.smoothPiece) { /* the curve above replaces these */ }
       else if (p.type === "line") out.push(`<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" stroke="${p.color}" stroke-width="${p.w}"${p.dash ? ' stroke-dasharray="3 2"' : ""}/>`);
       else if (p.type === "tri") {
         const pts = p.dir === "down" ? `${p.x},${p.y} ${p.x + p.w},${p.y} ${p.x + p.w / 2},${p.y + p.h}` : `${p.x},${p.y + p.h} ${p.x + p.w},${p.y + p.h} ${p.x + p.w / 2},${p.y}`;

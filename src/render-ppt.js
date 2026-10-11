@@ -125,15 +125,78 @@
     return s;
   }
 
-  // Draws spec into `shapes` inside `box`; returns {group} after syncing.
-  async function drawChart(context, shapes, spec, box) {
+  const supportsSvg = () => {
+    try {
+      return Office.context.requirements.isSetSupported("ImageCoercion", "1.2") &&
+        Office.context.requirements.isSetSupported("PowerPointApi", "1.5") &&
+        !!(Office.context.document && Office.context.document.setSelectedDataAsync);
+    } catch (e) { return false; }
+  };
+
+  // Inserts all smooth curves as one SVG graphic on `slide`, placed exactly over the chart.
+  // Returns the new shape's id, or null if Office couldn't insert it.
+  async function insertCurves(context, slide, slideId, curves) {
+    const pad = Math.max(...curves.map((c) => c.w)) * 1.5;
+    const x0 = Math.min(...curves.map((c) => c.bbox.x0)) - pad, y0 = Math.min(...curves.map((c) => c.bbox.y0)) - pad;
+    const x1 = Math.max(...curves.map((c) => c.bbox.x1)) + pad, y1 = Math.max(...curves.map((c) => c.bbox.y1)) + pad;
+    const w = +(x1 - x0).toFixed(2), h = +(y1 - y0).toFixed(2);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${w} ${h}">` +
+      curves.map((c) => `<path d="${c.d}" fill="none" stroke="${c.color}" stroke-width="${c.w}" stroke-linecap="round" stroke-linejoin="round"/>`).join("") + `</svg>`;
+
+    slide.shapes.load("items/id");
+    await context.sync();
+    const before = new Set(slide.shapes.items.map((q) => q.id));
+    try {
+      // the graphic lands on the active slide at the current selection: make that our slide, nothing selected
+      context.presentation.setSelectedSlides([slideId]);
+      slide.setSelectedShapes([]);
+      await context.sync();
+    } catch (e) { /* selection is best effort */ }
+    try {
+      await new Promise((res, rej) => Office.context.document.setSelectedDataAsync(svg,
+        { coercionType: Office.CoercionType.XmlSvg, imageLeft: x0, imageTop: y0, imageWidth: w, imageHeight: h },
+        (r) => (r.status === Office.AsyncResultStatus.Succeeded ? res() : rej(r.error))));
+    } catch (e) { return null; }
+    slide.shapes.load("items/id");
+    await context.sync();
+    const added = slide.shapes.items.filter((q) => !before.has(q.id));
+    if (added.length !== 1) { added.forEach((q) => q.delete()); await context.sync(); return null; }
+    const g = added[0];
+    g.left = x0; g.top = y0; g.width = w; g.height = h;
+    g.name = "ChartLite smooth lines";
+    await context.sync();
+    return g.id;
+  }
+
+  // Draws spec on `slide` inside `box`; returns the group after syncing.
+  async function drawChart(context, slide, spec, box) {
+    const shapes = slide.shapes;
     const layout = ChartEngine.layoutChart(spec, box);
     const ctx = { canRotate: supports("1.10"), fontName: (spec.options || {}).fontName || "" };
-    const created = [].concat(...layout.prims.map((p) => drawPrimitive(shapes, p, ctx))).filter(Boolean);
-    created.forEach((s) => s.load("id"));
+    const curves = layout.prims.filter((p) => p.type === "curve");
+    const useSvg = curves.length > 0 && supportsSvg();
+    const draw = (list) => [].concat(...list.map((p) => drawPrimitive(shapes, p, ctx))).filter(Boolean);
+
+    let created, svgId = null;
+    if (!useSvg) {
+      created = draw(layout.prims.filter((p) => p.type !== "curve"));
+    } else {
+      // bars and axes below the curves, dots and labels above them
+      const split = layout.prims.findIndex((p) => p.type === "curve");
+      created = draw(layout.prims.slice(0, split).filter((p) => p.type !== "curve" && !p.smoothPiece));
+      slide.load("id");
+      created.forEach((q) => q.load("id"));
+      await context.sync();
+      svgId = await insertCurves(context, slide, slide.id, curves);
+      if (!svgId) created = created.concat(draw(layout.prims.filter((p) => p.smoothPiece)));   // fallback
+      created = created.concat(draw(layout.prims.slice(split).filter((p) => p.type !== "curve" && !p.smoothPiece)));
+    }
+    created.forEach((q) => q.load("id"));
     await context.sync();
 
-    const group = shapes.addGroup(created.map((s) => s.id));
+    const ids = created.map((q) => q.id);
+    if (svgId) ids.push(svgId);
+    const group = shapes.addGroup(ids);
     group.name = "ChartLite Chart";
     group.tags.add(TAG_SPEC, JSON.stringify(spec));
     group.tags.add(TAG_BOX, JSON.stringify(box));
@@ -204,7 +267,7 @@
         note = " in the selected shape's area";
       }
       const slide = context.presentation.getSelectedSlides().getItemAt(0);
-      const group = await drawChart(context, slide.shapes, spec, box);
+      const group = await drawChart(context, slide, spec, box);
       slide.load("id");
       await context.sync();
       selectShape(context, slide.id, group.id);
@@ -240,7 +303,7 @@
       const newBox = adjustedBox(info);
       shape.delete();
       await context.sync();
-      const group = await drawChart(context, slide.shapes, spec, newBox);
+      const group = await drawChart(context, slide, spec, newBox);
       if (target.select !== false) { selectShape(context, target.slideId, group.id); await context.sync(); }
       return { id: group.id, slideId: target.slideId };
     });

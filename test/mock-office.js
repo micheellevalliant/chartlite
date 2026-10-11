@@ -95,6 +95,8 @@
       },
       getItemOrNullObject(id) { return find(id) || { isNullObject: true, load() { return this; } }; },
       getItem(id) { return find(id) || fail("no shape " + id); },
+      load() { return this; },
+      get items() { return slide.items.slice(); },
     };
     slide.load = () => slide;
     slide.setSelectedShapes = (ids) => { window.__sel = ids.map((id) => find(id)); };
@@ -116,10 +118,24 @@
   let selHandler = null;
   window.Office = {
     HostType: { PowerPoint: "PowerPoint" },
+    CoercionType: { XmlSvg: "xmlSvg" },
+    AsyncResultStatus: { Succeeded: "succeeded", Failed: "failed" },
     EventType: { DocumentSelectionChanged: "documentSelectionChanged" },
     context: {
-      requirements: { isSetSupported: (n, v) => n === "PowerPointApi" && verNum(v) <= verNum(String(window.__apiLevel || "1.10")) },
-      document: { addHandlerAsync(e, h) { selHandler = h; } },
+      requirements: { isSetSupported: (n, v) => (n === "PowerPointApi" && verNum(v) <= verNum(String(window.__apiLevel || "1.10"))) || (n === "ImageCoercion" && !window.__noSvg) },
+      document: {
+        addHandlerAsync(e, h) { selHandler = h; },
+        // PowerPoint inserts an SVG as a "Graphic" shape on the active slide
+        setSelectedDataAsync(data, opts, cb) {
+          if (opts.coercionType !== "xmlSvg") fail("unexpected coercion " + opts.coercionType);
+          if (!/^<svg[\s\S]*<\/svg>$/.test(data)) fail("not an svg document");
+          const g = makeShape(slide, "Graphic", { left: opts.imageLeft || 0, top: opts.imageTop || 0, width: 100, height: 100 });
+          g.svg = data;
+          slide.items.push(g);
+          window.__svgInserts = (window.__svgInserts || 0) + 1;
+          setTimeout(() => cb({ status: "succeeded" }), 0);
+        },
+      },
     },
     onReady(cb) { setTimeout(() => cb({ host: "PowerPoint" }), 0); },
   };
@@ -131,6 +147,12 @@
     const out = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960"><rect width="960" height="540" fill="#fff"/>'];
     const draw = (s) => {
       if (s.children) return s.children.forEach(draw);
+      if (s.kind === "Graphic") {
+        const vb = (s.svg.match(/viewBox="([^"]+)"/) || [])[1];
+        const inner = s.svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
+        out.push(`<svg x="${s.left}" y="${s.top}" width="${s.width}" height="${s.height}" viewBox="${vb}" preserveAspectRatio="none" overflow="visible">${inner}</svg>`);
+        return;
+      }
       const cx = s.left + s.width / 2, cy = s.top + s.height / 2;
       const tf = s.rotation ? ` transform="rotate(${s.rotation} ${cx} ${cy})"` : "";
       const lf = s.lineFormat;

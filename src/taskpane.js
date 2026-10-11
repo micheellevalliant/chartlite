@@ -688,7 +688,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.3.0";
+  const VERSION = "1.3.1";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 
