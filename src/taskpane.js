@@ -459,6 +459,20 @@
     state.deltas.splice(+ev.target.closest(".delta").dataset.k, 1);
     renderArrowControls(); refresh();
   });
+  $("addMoM").addEventListener("click", () => {
+    const n = state.categories.length;
+    for (let c = 0; c < n - 1; c++) {
+      if (!state.deltas.some((d) => d.from === c && d.to === c + 1)) state.deltas.push({ from: c, to: c + 1, mode: "pct" });
+    }
+    state.deltas.sort((p, q) => p.from - q.from || p.to - q.to);
+    renderArrowControls(); refresh();
+    setStatus("Added month-on-month arrows. Change any of them to Absolute, or remove the ones you don't need.", "ok");
+  });
+  $("clearDeltas").addEventListener("click", () => {
+    state.deltas = [];
+    $("cagrFrom").value = ""; $("cagrTo").value = "";
+    renderArrowControls(null); refresh();
+  });
   $("addDelta").addEventListener("click", () => {
     const n = state.categories.length;
     if (n < 2) return;
@@ -753,7 +767,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.5.0";
+  const VERSION = "1.5.1";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 

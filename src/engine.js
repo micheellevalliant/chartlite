@@ -297,8 +297,36 @@
       arrows.push({ from: +o.cagr.from, to: +o.cagr.to, mode: "cagr" });
     (o.deltas || []).forEach((d) => { if (d.from !== d.to) arrows.push({ from: +d.from, to: +d.to, mode: d.mode || "pct" }); });
     const valid = arrows.filter((a) => a.from >= 0 && a.to >= 0 && a.from < n && a.to < n);
+    // arrow labels first (their width decides how arrows share rows)
+    const arrowBase = (c) => (isWF ? cat[c].total : barIdx.length ? cat[c].total : num(spec.series[lineIdx[0]].values[c]));
+    valid.forEach((a) => {
+      const va = arrowBase(a.from), vb = arrowBase(a.to);
+      if (a.mode === "cagr") {
+        const g = va > 0 && vb > 0 ? (Math.pow(vb / va, 1 / Math.abs(a.to - a.from)) - 1) * 100 : NaN;
+        a.text = isNaN(g) ? "CAGR n/a" : "CAGR " + formatNumber(g, o, { decimals: 1, unit: "%", prefix: "", sign: true }); a.isNeg = g < 0;
+      } else if (a.mode === "abs") {
+        a.text = formatNumber(vb - va, o, { sign: true }); a.isNeg = vb - va < 0;
+      } else {
+        const g = va !== 0 ? ((vb - va) / Math.abs(va)) * 100 : NaN;
+        a.text = isNaN(g) ? "n/a" : formatNumber(g, o, { decimals: 1, unit: "%", prefix: "", sign: true }); a.isNeg = g < 0;
+      }
+    });
+    // pack arrows into rows: arrows that don't overlap (bubble included) share a row, so
+    // month-on-month arrows sit side by side, staggering into a second row only when needed
+    const slotEst = ((box.w - axisW - sideNameW) / n) * 0.9;
+    const ARROW_INSET = 0.15;   // legs start/end a little inside the bars (in slots)
+    const arrowRows = [];
+    valid.forEach((a) => {
+      const lo0 = Math.min(a.from, a.to), hi0 = Math.max(a.from, a.to);
+      const mid = (a.from + a.to) / 2, half = (textW(a.text, fs) + fs * 0.6) / slotEst / 2 + 0.04;
+      const lo = Math.min(lo0 + ARROW_INSET - 0.03, mid - half), hi = Math.max(hi0 - ARROW_INSET + 0.03, mid + half);
+      let r = arrowRows.findIndex((row) => row.every(([l, h]) => hi <= l || lo >= h));
+      if (r < 0) { arrowRows.push([]); r = arrowRows.length - 1; }
+      arrowRows[r].push([lo, hi]);
+      a.row = r;
+    });
     const arrowRowH = fs * 2.3;
-    const arrowH = valid.length * arrowRowH;
+    const arrowH = arrowRows.length * arrowRowH;
     const topPad = fs * 1.7;
     const hasNeg = vmin < 0;
     const bottomPad = hasNeg ? fs * 1.6 : 0;
@@ -681,24 +709,11 @@
 
     // ---- difference / CAGR arrows
     const arrowsTop = box.y + legendH;
-    valid.forEach((a, k) => {
-      const rowY = arrowsTop + k * arrowRowH + arrowRowH * 0.55;
-      const base = (c) => (isWF ? cat[c].total : barIdx.length ? cat[c].total : num(spec.series[lineIdx[0]].values[c]));
-      const va = base(a.from), vb = base(a.to);
-      let text, isNeg;
-      if (a.mode === "cagr") {
-        const periods = Math.abs(a.to - a.from);
-        const g = va > 0 && vb > 0 ? (Math.pow(vb / va, 1 / periods) - 1) * 100 : NaN;
-        text = isNaN(g) ? "CAGR n/a" : "CAGR " + formatNumber(g, o, { decimals: 1, unit: "%", prefix: "", sign: true });
-        isNeg = g < 0;
-      } else if (a.mode === "abs") {
-        text = formatNumber(vb - va, o, { sign: true }); isNeg = vb - va < 0;
-      } else {
-        const g = va !== 0 ? ((vb - va) / Math.abs(va)) * 100 : NaN;
-        text = isNaN(g) ? "n/a" : formatNumber(g, o, { decimals: 1, unit: "%", prefix: "", sign: true });
-        isNeg = g < 0;
-      }
-      const xa = cx(a.from), xb = cx(a.to);
+    valid.forEach((a) => {
+      const rowY = arrowsTop + a.row * arrowRowH + arrowRowH * 0.55;
+      const text = a.text, isNeg = a.isNeg;
+      const dir = a.to > a.from ? 1 : -1;
+      const xa = cx(a.from) + dir * ARROW_INSET * slot, xb = cx(a.to) - dir * ARROW_INSET * slot;
       const ta = (labelTop[a.from] !== undefined && isFinite(labelTop[a.from]) ? labelTop[a.from] : plotTop) - fs * 0.25;
       const tb = (labelTop[a.to] !== undefined && isFinite(labelTop[a.to]) ? labelTop[a.to] : plotTop) - fs * 0.25;
       const triH = fs * 0.55, triW = fs * 0.7;
