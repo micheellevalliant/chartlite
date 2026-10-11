@@ -75,6 +75,8 @@
       lineWidth: parseFloat(v("lineWidth")) || 1.75,
       lineDash: v("lineDash") || "solid",
       holeSize: parseFloat(v("holeSize")) || 0.55,
+      labelContent: v("labelContent") || "auto",
+      scalePow: parseInt(v("scalePow"), 10) || 0,
     };
   }
 
@@ -99,6 +101,8 @@
     if (!$("lineWidth").value) $("lineWidth").value = "1.75";
     set("lineDash", o.lineDash || "solid");
     $("holeSize").value = String(o.holeSize || 0.55);
+    set("labelContent", o.labelContent || "auto");
+    $("scalePow").value = String(o.scalePow || 0);
     if (!$("holeSize").value) $("holeSize").value = "0.55";
     state.deltas = (o.deltas || []).map((d) => ({ from: d.from, to: d.to, mode: d.mode || "pct" }));
     renderArrowControls(o.cagr || null);
@@ -124,6 +128,7 @@
         if (s.labelPos && s.labelPos !== "auto") out.labelPos = s.labelPos;
         if (s.lineWeight) out.lineWeight = s.lineWeight;
         if (s.dash) out.dash = s.dash;
+        if (s.labelContent && s.labelContent !== "auto") out.labelContent = s.labelContent;
         return out;
       }),
       options: readOptions(),
@@ -144,6 +149,7 @@
       labelPos: s.labelPos || "auto",
       lineWeight: s.lineWeight || null,
       dash: s.dash || "",
+      labelContent: s.labelContent || "auto",
       raw: (s.values || []).map((v) => toRaw(v, loc)),
     }));
     writeOptions(spec.options || {});
@@ -189,24 +195,23 @@
   }
 
   const isLineSeries = (s) => state.type === "line" || (state.type === "combo" && s.kind === "line");
-  const WEIGHTS = [["", "Default"], ["0.5", "½ pt"], ["0.75", "¾ pt"], ["1", "1 pt"], ["1.5", "1½ pt"], ["1.75", "1¾ pt"], ["2.25", "2¼ pt"], ["3", "3 pt"], ["4.5", "4½ pt"], ["6", "6 pt"]];
-  const DASHES = [["", "Default"], ["solid", "━━ Solid"], ["dash", "╸╸ Dashed"], ["longDash", "━ ━ Long dash"], ["roundDot", "···· Dotted"], ["dashDot", "━·━ Dash-dot"]];
-  const LPOS = [["auto", "Auto"], ["above", "↑ Above"], ["center", "● Center"], ["below", "↓ Below"], ["none", "✕ None"]];
+  const WEIGHTS = [["", "Weight: default"], ["0.5", "½ pt"], ["0.75", "¾ pt"], ["1", "1 pt"], ["1.5", "1½ pt"], ["1.75", "1¾ pt"], ["2.25", "2¼ pt"], ["3", "3 pt"], ["4.5", "4½ pt"], ["6", "6 pt"]];
+  const DASHES = [["", "Line: default"], ["solid", "━━ Solid"], ["dash", "╸╸ Dashed"], ["longDash", "━ ━ Long dash"], ["roundDot", "···· Dotted"], ["dashDot", "━·━ Dash-dot"]];
+  const LPOS = [["auto", "Position: auto"], ["above", "↑ Above"], ["center", "● Center"], ["below", "↓ Below"], ["none", "✕ No labels"]];
+  const LCONT = [["auto", "Content: default"], ["value", "Absolute"], ["pct", "%"], ["valuePct", "Absolute (%)"], ["pctValue", "% (Absolute)"], ["category", "Category"], ["series", "Series"], ["seriesValue", "Series Absolute"], ["seriesPct", "Series %"]];
   const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}"${String(cur) === v ? " selected" : ""}>${t}</option>`).join("");
   function renderSeriesStyles() {
-    const anyLine = state.series.some(isLineSeries);
-    let h = `<div class="shead"><span></span><span>Series</span><span>Labels</span><span>${anyLine ? "Weight" : ""}</span><span>${anyLine ? "Line type" : ""}</span></div>`;
+    let h = "";
     state.series.forEach((s, i) => {
       const col = s.color || E.DEFAULT_PALETTE[i % E.DEFAULT_PALETTE.length];
-      h += `<div class="srow"><span class="sw" style="background:${col}"></span><span class="nm" title="${attr(s.name)}">${attr(s.name || "Series " + (i + 1))}</span>`;
+      h += `<div class="srow"><span class="sw" style="background:${col}"></span><span class="nm" title="${attr(s.name)}">${attr(s.name || "Series " + (i + 1))}</span><div class="sopts">`;
       h += `<select data-lpos="${i}" title="Label position for this series">${opts(LPOS, s.labelPos || "auto")}</select>`;
+      h += `<select data-lc="${i}" title="What this series' labels show">${opts(LCONT, s.labelContent || "auto")}</select>`;
       if (isLineSeries(s)) {
         h += `<select data-lw="${i}" title="Line weight">${opts(WEIGHTS, s.lineWeight ? String(s.lineWeight) : "")}</select>`;
         h += `<select data-dash="${i}" title="Line type">${opts(DASHES, s.dash || "")}</select>`;
-      } else {
-        h += `<span class="na">${anyLine ? "bars" : ""}</span>`;
       }
-      h += `</div>`;
+      h += `</div></div>`;
     });
     $("seriesStyles").innerHTML = h;
   }
@@ -215,6 +220,7 @@
     if (d.lpos !== undefined) state.series[+d.lpos].labelPos = ev.target.value;
     else if (d.lw !== undefined) state.series[+d.lw].lineWeight = parseFloat(ev.target.value) || null;
     else if (d.dash !== undefined) state.series[+d.dash].dash = ev.target.value;
+    else if (d.lc !== undefined) state.series[+d.lc].labelContent = ev.target.value;
     else return;
     refresh();
   });
@@ -508,6 +514,15 @@
   $("dotMinus").addEventListener("click", () => stepDot(-1));
   $("dotPlus").addEventListener("click", () => stepDot(1));
 
+  // ------------------------------------------------------------------ number scale
+  const SUFFIX = { en: { 3: "K", 6: "M", 9: "B", 12: "T" }, id: { 3: " rb", 6: " jt", 9: " M", 12: " T" } };
+  const AUTO_SUFFIXES = new Set(["K", "M", "B", "T", " rb", " jt", " M", " T"]);
+  $("scalePow").addEventListener("change", () => {
+    const u = $("unit").value;
+    if (u === "" || AUTO_SUFFIXES.has(u)) $("unit").value = (SUFFIX[locale] || SUFFIX.en)[parseInt($("scalePow").value, 10)] || "";
+    refresh();
+  });
+
   // ------------------------------------------------------------------ options
   document.querySelectorAll(".panel input, .panel select").forEach((el) => {
     if (el.closest("#sheet") || el.closest("#deltaList")) return;
@@ -638,7 +653,7 @@
         name: s.name, raw: s.raw.slice(), color: o.color || "",
         kind: o.kind || (state.type === "combo" && i > 0 ? "line" : "bar"),
         axis: o.axis || "primary", labelPos: o.labelPos || "auto", unit: o.unit,
-        lineWeight: o.lineWeight || null, dash: o.dash || "",
+        lineWeight: o.lineWeight || null, dash: o.dash || "", labelContent: o.labelContent || "auto",
       };
     });
     state.deltas = state.deltas.filter((d) => d.from < state.categories.length && d.to < state.categories.length);
@@ -738,7 +753,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.4.0";
+  const VERSION = "1.5.0";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 

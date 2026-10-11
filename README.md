@@ -87,6 +87,18 @@ Note: manual tweaks made directly to shapes inside a chart (recoloring one bar, 
 - **Value axis**: *Shown* draws a vertical scale with tick labels on the left. Combine it with **Axis min / max** to start the scale at, say, 4 when your values sit around 5.
 - **Legend**: *Auto* puts series names next to the stacked bars (left, or right when the value axis is shown) and at the end of each line. You can also choose *Top*, *Left of bars* or *Right / line ends*.
 
+### Label content and number scale
+
+- **Label content** (Labels & numbers, and per series under *Series style*) sets what each label shows:
+  - *Absolute*: the value.
+  - *%*: share of the category total (stacked and clustered: of that column; doughnut and pie: of the whole; waterfall: of the start bar).
+  - *Absolute (%)* and *% (Absolute)*: both, e.g. `22 (71%)`.
+  - *Category*, *Series*, *Series Absolute*, *Series %*: the category or series name, alone or with the value.
+- **Number scale** shows numbers divided by 10⁰ up to 10¹² (thousands, millions, billions, trillions), or ×100 to turn fractions like 0.25 into 25.
+  - Labels, totals, axis ticks and difference arrows are scaled. Percentages and CAGR are not.
+  - When the *Unit* box is empty, a matching suffix is filled in automatically: K / M / B / T, or rb / jt / M / T with the `1.234,5` number style. Type your own unit to override it.
+  - *Axis min / max* stay in your original data units.
+
 ### Series style (line weight and line type)
 
 Under **Series style** each series has its own row:

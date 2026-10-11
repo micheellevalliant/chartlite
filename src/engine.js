@@ -44,6 +44,8 @@
     lineWidth: 1.75,
     lineDash: "solid",           // solid | dash | longDash | roundDot | dashDot (series can override)
     holeSize: 0.55,              // donut: inner radius as a share of the outer radius
+    labelContent: "auto",        // auto | value | pct | valuePct | pctValue | category | series | seriesValue | seriesPct
+    scalePow: 0,                 // show numbers divided by 10^scalePow (negative = multiplied, e.g. -2 = x100)
     barWidth: 0.62,        // fraction of the category slot used by bars
     pct100Labels: true,    // 100% chart: label segments with share instead of value
     cagr: null,            // {from, to}
@@ -58,6 +60,9 @@
   function formatNumber(v, o, extra) {
     extra = extra || {};
     if (v === null || v === undefined || isNaN(v)) return "";
+    // number scale (thousands, millions, ...): applies to values, never to percentages
+    const sp = o.scalePow || 0;
+    if (sp && !extra.noScale && extra.unit !== "%") v = v / Math.pow(10, sp);
     const dec = extra.decimals !== undefined ? extra.decimals : o.decimals;
     const neg = v < 0;
     let s = Math.abs(v).toFixed(dec);
@@ -371,6 +376,12 @@
       P.push({ type: "line", x1: px0, y1: yBase, x2: pxEnd, y2: yBase, color: o.axisColor, w: 0.75 });
     }
 
+    // ---- label content: absolute, %, both, category or series name
+    const barDen = cats.map((_, c) => barIdx.reduce((a, i) => a + Math.abs(num(spec.series[i].values[c])), 0));
+    const lineDen = cats.map((_, c) => lineIdx.reduce((a, i) => { const v = spec.series[i].values[c]; return a + (typeof v === "number" ? Math.abs(v) : 0); }, 0));
+    const wfDen = isWF ? Math.abs(num(spec.series[0].values[0])) : 0;
+    const labelText = (i, c, v, den, dflt, extra) => contentText(spec, o, i, c, v, den, dflt, extra);
+
     // ---- bar labels at a chosen position: above (outside end), center, below (inside base)
     const lhB = fs * 1.4;
     const barLabel = (pos, a) => {
@@ -411,7 +422,7 @@
             P.push({ type: "rect", x: x + bw * 0.04, y: y1, w: bw * 0.92, h: Math.max(0.5, y2 - y1), fill: col, role: "bar" });
             if (o.showLabels) {
               const pos = posFor(s.i);
-              const ly = barLabel(pos === "auto" ? "above" : pos, { x: x + bw * 0.04, w: bw * 0.92, y1, y2, lbl: formatNumber(s.v, o), col, neg: s.v < 0, wideX: x - fs, wideW: bw + fs * 2 });
+              const ly = barLabel(pos === "auto" ? "above" : pos, { x: x + bw * 0.04, w: bw * 0.92, y1, y2, lbl: labelText(s.i, c, s.v, barDen[c], formatNumber(s.v, o)), col, neg: s.v < 0, wideX: x - fs, wideW: bw + fs * 2 });
               if (ly !== null) top = Math.min(top, ly);
             }
             top = Math.min(top, y1);
@@ -438,6 +449,8 @@
             if (type === "stacked100" && o.pct100Labels) lbl = formatNumber(s.share, o, { unit: "%", prefix: "" });
             else if (isWF && (s.wfKind === "up" || s.wfKind === "down")) lbl = formatNumber(val, o, { sign: true });
             else lbl = formatNumber(val, o);
+            lbl = isWF ? labelText(s.i, c, val, wfDen, lbl, s.wfKind === "up" || s.wfKind === "down" ? { sign: true } : undefined)
+                       : labelText(s.i, c, val, barDen[c], lbl);
             const negLbl = (type === "stacked100" ? s.share : val) < 0;
             const fitsInside = h >= fs * 1.35 && barW >= textW(lbl, fs) * 0.8;
             const pos = posFor(s.i);
@@ -476,7 +489,7 @@
             // single-series stacked == plain bar: put value above instead of inside
             const t = e.total;
             const ly = t >= 0 ? Yc(e.top) - fs * 1.5 : Yc(e.bottom) + fs * 0.1;
-            P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.4, text: formatNumber(t, o), size: fs, color: t < 0 ? NEG_RED : o.textColor, align: "center" });
+            P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.4, text: labelText(barIdx[0], c, t, barDen[c], formatNumber(t, o)), size: fs, color: t < 0 ? NEG_RED : o.textColor, align: "center" });
             top = Math.min(top, ly);
           }
         }
@@ -550,7 +563,8 @@
         if (!p) return;
         if (ms > 0 && !(o.showLabels && lpos === "center")) P.push(Object.assign({ type: "dot", shape, x: p.x - ms / 2, y: p.y - ms / 2, w: ms, h: ms }, dotStyle(col, ms)));
         if (o.showLabels && lpos !== "none") {
-          const lbl = formatNumber(p.v, o, s.unit !== undefined ? { unit: s.unit } : {});
+          const ux = s.unit !== undefined ? { unit: s.unit } : {};
+          const lbl = labelText(i, p.c, p.v, lineDen[p.c], formatNumber(p.v, o, ux), ux);
           const overBars = barIdx.length && secondary.indexOf(i) < 0;   // only then can labels collide with bars
           lineLabels.push({ p, lbl, col, overBars, series: i, pos: lpos });
         }
@@ -703,6 +717,27 @@
 
   // Monotone cubic (Fritsch-Carlson) through points with increasing x; returns sampled points.
   // Smooth like Excel's smoothed line, but never overshoots above/below a data point.
+  // Label text for one data point. "auto" keeps each chart type's own default (dflt).
+  function contentText(spec, o, i, c, v, den, dflt, extra) {
+    const sr = spec.series[i] || {};
+    const lc = sr.labelContent && sr.labelContent !== "auto" ? sr.labelContent : (o.labelContent || "auto");
+    if (lc === "auto") return dflt;
+    const val = formatNumber(v, o, extra || {});
+    const pct = den ? formatNumber((v / den) * 100, o, { unit: "%", prefix: "" }) : "";
+    const nm = sr.name || "Series " + (i + 1), cn = String((spec.categories || [])[c] === undefined ? "" : spec.categories[c]);
+    switch (lc) {
+      case "value": return val;
+      case "pct": return pct || val;
+      case "valuePct": return pct ? `${val} (${pct})` : val;
+      case "pctValue": return pct ? `${pct} (${val})` : val;
+      case "category": return cn;
+      case "series": return nm;
+      case "seriesValue": return `${nm}: ${val}`;
+      case "seriesPct": return `${nm}: ${pct || val}`;
+      default: return dflt;
+    }
+  }
+
   // ---------------------------------------------------------------- donut / pie
   // One ring per category; the series are the segments. Angles run clockwise from 12 o'clock.
   function layoutDonut(spec, box, o) {
@@ -744,7 +779,7 @@
           const pos = posFor(i);
           if (!o.showLabels || pos === "none") return;
           const share = (v / sum) * 100;
-          const lbl = o.pct100Labels !== false ? formatNumber(share, o, { unit: "%", prefix: "" }) : formatNumber(v, o);
+          const lbl = contentText(spec, o, i, c, v, sum, o.pct100Labels !== false ? formatNumber(share, o, { unit: "%", prefix: "" }) : formatNumber(v, o));
           const am = (a0 + a1) / 2;
           const rm = hole > 0 ? (r0 + r1) / 2 : r1 * 0.62;
           const tw = textW(lbl, fs) - 2;
