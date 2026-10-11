@@ -19,8 +19,8 @@ with sync_playwright() as p:
     pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append("pane: " + str(e)))
     pg.add_init_script(mock)
     pg.goto((root / "src/taskpane.html").as_uri()); pg.wait_for_selector("#preview svg"); pg.wait_for_timeout(300)
-    assert pg.inner_text("#ver") == "ChartLite v1.3.1"
-    assert pg.locator(".tile").count() == 7
+    assert pg.inner_text("#ver") == "ChartLite v1.4.0"
+    assert pg.locator(".tile").count() == 9
 
     # 1) click the Stacked tile: chart on slide + datasheet popup
     with pg.expect_popup() as pop: pg.click('.tile[data-preset="stacked"]')

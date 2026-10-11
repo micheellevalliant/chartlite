@@ -42,6 +42,8 @@
     markerShape: "circle",       // circle | square | diamond | triangle | none
     showAxis: false,             // value axis with tick labels
     lineWidth: 1.75,
+    lineDash: "solid",           // solid | dash | longDash | roundDot | dashDot (series can override)
+    holeSize: 0.55,              // donut: inner radius as a share of the outer radius
     barWidth: 0.62,        // fraction of the category slot used by bars
     pct100Labels: true,    // 100% chart: label segments with share instead of value
     cagr: null,            // {from, to}
@@ -107,6 +109,43 @@
   const onColor = (fill) => (luminance(fill) < 0.4 ? "#FFFFFF" : "#262626");
   const textW = (s, fs) => String(s).length * fs * 0.56 + 6;
 
+  // dash names used in specs -> PowerPoint line dash styles, and the SVG equivalent (in line widths)
+  const DASH_PPT = { solid: null, dash: "Dash", longDash: "LongDash", roundDot: "RoundDot", dashDot: "DashDot" };
+  const DASH_SVG = { Dash: [4, 3], LongDash: [8, 3], RoundDot: [0.01, 2], DashDot: [4, 3, 1, 3], SquareDot: [1, 1] };
+  function dashAttrs(pptDash, w, solidCap) {
+    if (!pptDash || !DASH_SVG[pptDash]) return ` stroke-linecap="${solidCap || "butt"}"`;
+    const arr = DASH_SVG[pptDash].map((k) => +(k * Math.max(w, 0.75)).toFixed(2)).join(" ");
+    return ` stroke-dasharray="${arr}" stroke-linecap="${pptDash === "RoundDot" ? "round" : "butt"}"`;
+  }
+  // Cuts a polyline into the visible pieces of a dash pattern (for Office builds without vector curves)
+  function dashPolyline(path, pptDash, w) {
+    const pat = (DASH_SVG[pptDash] || [1]).map((k) => Math.max(k * w, pptDash === "RoundDot" && k < 0.1 ? w * 0.6 : 0.3));
+    const out = [];
+    let pi = 0, left = pat[0], on = true;
+    for (let k = 0; k < path.length - 1; k++) {
+      let ax = path[k].x, ay = path[k].y;
+      const bx = path[k + 1].x, by = path[k + 1].y;
+      let seg = Math.hypot(bx - ax, by - ay);
+      while (seg > 1e-6) {
+        const step = Math.min(seg, left), t = step / seg;
+        const cx2 = ax + (bx - ax) * t, cy2 = ay + (by - ay) * t;
+        if (on) out.push([ax, ay, cx2, cy2]);
+        ax = cx2; ay = cy2; seg -= step; left -= step;
+        if (left <= 1e-6) { pi = (pi + 1) % pat.length; left = pat[pi]; on = pi % 2 === 0; }
+      }
+    }
+    // merge consecutive "on" pieces that continue each other (fewer shapes)
+    const merged = [];
+    out.forEach((q) => {
+      const last = merged[merged.length - 1];
+      if (last && Math.abs(last[last.length - 2] - q[0]) < 1e-6 && Math.abs(last[last.length - 1] - q[1]) < 1e-6) last.push(q[2], q[3]);
+      else merged.push(q.slice());
+    });
+    const pieces = [];
+    merged.forEach((q) => { for (let k = 0; k + 3 < q.length; k += 2) pieces.push([q[k], q[k + 1], q[k + 2], q[k + 3]]); });
+    return pieces;
+  }
+
   function mergeOptions(spec) {
     const o = Object.assign({}, DEFAULTS, spec.options || {});
     o.wf = Object.assign({}, DEFAULTS.wf, (spec.options || {}).wf || {});
@@ -135,6 +174,7 @@
     }
 
     const type = spec.type || "stacked";
+    if (type === "donut" || type === "pie") return layoutDonut(spec, box, o);
     const isWF = type === "waterfall";
     const barIdx = [], lineIdx = [];
     spec.series.forEach((s, i) => {
@@ -314,7 +354,7 @@
         const col = seriesColor(spec, o, i);
         const isLine = lineIdx.indexOf(i) >= 0;
         if (isLine) {
-          P.push({ type: "line", x1: lx, y1: ly + fs * 0.6, x2: lx + fs * 1.4, y2: ly + fs * 0.6, color: col, w: o.lineWidth || 1.75 });
+          P.push({ type: "line", x1: lx, y1: ly + fs * 0.6, x2: lx + fs * 1.4, y2: ly + fs * 0.6, color: col, w: s.lineWeight || o.lineWidth || 1.75, dash: DASH_PPT[s.dash || o.lineDash || "solid"] || undefined });
           if (ms > 0) P.push(Object.assign({ type: "dot", shape, x: lx + fs * 0.45, y: ly + fs * 0.35, w: fs * 0.5, h: fs * 0.5 }, dotStyle(col, fs * 0.5)));
         } else {
           P.push({ type: "rect", x: lx + fs * 0.2, y: ly + fs * 0.1, w: fs, h: fs, fill: col });
@@ -487,16 +527,22 @@
         const smooth = o.smooth && r.length > 2;
         const path = smooth ? smoothPath(r, 2.5) : r;
         polylines.push(path);
-        const lw = o.lineWidth || 1.75;
+        const lw = s.lineWeight || o.lineWidth || 1.75;
+        const dash = DASH_PPT[s.dash || o.lineDash || "solid"] || null;
         if (smooth) {
           // exact curve (drawn as one vector graphic where Office supports it) ...
           const xs = path.map((q) => q.x), ys = path.map((q) => q.y);
-          P.push({ type: "curve", d: bezierPath(r), color: col, w: lw,
+          P.push({ type: "curve", d: bezierPath(r), color: col, w: lw, dash,
             bbox: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } });
         }
-        // ... and short straight pieces as the fallback for Office versions without it
-        for (let k = 0; k < path.length - 1; k++) {
-          P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: lw, join: true, smoothPiece: smooth });
+        if (smooth && dash) {
+          // ... fallback pieces for dashed curves: cut the pattern ourselves so it runs on smoothly
+          dashPolyline(path, dash, lw).forEach(([x1, y1, x2, y2]) => P.push({ type: "line", x1, y1, x2, y2, color: col, w: lw, smoothPiece: true }));
+        } else {
+          // ... and short straight pieces as the fallback for Office versions without it
+          for (let k = 0; k < path.length - 1; k++) {
+            P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: lw, join: !dash, smoothPiece: smooth, dash: smooth ? undefined : dash || undefined });
+          }
         }
       });
       const lpos = posFor(i);
@@ -657,6 +703,133 @@
 
   // Monotone cubic (Fritsch-Carlson) through points with increasing x; returns sampled points.
   // Smooth like Excel's smoothed line, but never overshoots above/below a data point.
+  // ---------------------------------------------------------------- donut / pie
+  // One ring per category; the series are the segments. Angles run clockwise from 12 o'clock.
+  function layoutDonut(spec, box, o) {
+    const fs = o.fontSize, P = [];
+    const cats = spec.categories, n = cats.length, ser = spec.series;
+    const isNum = (v) => typeof v === "number" && isFinite(v);
+    const hole = spec.type === "pie" ? 0 : Math.min(0.9, Math.max(0.2, isNum(o.holeSize) ? o.holeSize : 0.55));
+    const names = ser.map((q, i) => q.name || "Series " + (i + 1));
+    const legendTop = o.showLegend && o.legendPos === "top";
+    const legendRight = o.showLegend && !legendTop;
+    const legW = legendRight ? Math.max(...names.map((nm) => textW(nm, fs))) + fs * 2.2 : 0;
+    const legH = legendTop ? fs * 2 : 0;
+    const showCat = n > 1 || (cats[0] !== undefined && String(cats[0]).trim() !== "");
+    const catH = showCat ? fs * 1.9 : 0;
+    const sideRoom = fs * 3.8, vRoom = fs * 1.8;
+    const cw = (box.w - legW) / n;
+    const availH = box.h - legH - catH;
+    const D = Math.max(24, Math.min(cw - 2 * sideRoom, availH - 2 * vRoom));
+    const r1 = D / 2, r0 = r1 * hole;
+    const lh = fs * 1.3;
+    const pt = (cx, cy, r, a) => ({ x: cx + r * Math.sin(a), y: cy - r * Math.cos(a) });
+    const posFor = (i) => { const sp = ser[i].labelPos; return sp && sp !== "auto" ? sp : (o.labelPos || "auto"); };
+
+    for (let c = 0; c < n; c++) {
+      const cx = box.x + cw * (c + 0.5), cy = box.y + legH + availH / 2;
+      const vals = ser.map((q) => Math.max(0, num(q.values[c])));
+      const sum = vals.reduce((a, b) => a + b, 0);
+      if (sum <= 0) {
+        P.push({ type: "text", x: cx - cw / 2, y: cy - lh / 2, w: cw, h: lh, text: "No data", size: fs, color: o.textColor, align: "center" });
+      } else {
+        let a = 0;
+        const outside = [];
+        vals.forEach((v, i) => {
+          if (v <= 0) return;
+          const a0 = a, a1 = a + (v / sum) * Math.PI * 2;
+          a = a1;
+          const fill = seriesColor(spec, o, i);
+          P.push({ type: "wedge", cx, cy, r0, r1, a0, a1, fill, stroke: "#FFFFFF", sw: Math.min(1.25, r1 * 0.02 + 0.5) });
+          const pos = posFor(i);
+          if (!o.showLabels || pos === "none") return;
+          const share = (v / sum) * 100;
+          const lbl = o.pct100Labels !== false ? formatNumber(share, o, { unit: "%", prefix: "" }) : formatNumber(v, o);
+          const am = (a0 + a1) / 2;
+          const rm = hole > 0 ? (r0 + r1) / 2 : r1 * 0.62;
+          const tw = textW(lbl, fs) - 2;
+          const room = hole > 0 ? r1 - r0 : r1 * 0.7;
+          const fits = (a1 - a0) * rm >= tw * 0.95 && room >= lh * 0.95;
+          if (pos === "center" || (pos === "auto" && fits)) {
+            const q = pt(cx, cy, rm, am);
+            P.push({ type: "text", x: q.x - tw / 2, y: q.y - lh / 2, w: tw, h: lh, text: lbl, size: fs, color: onColor(fill), align: "center" });
+          } else {
+            outside.push({ am, lbl, tw });
+          }
+        });
+        // outside labels with leader lines, nudged apart on each side
+        [1, -1].forEach((side) => {
+          const items = outside.filter((q) => (Math.sin(q.am) >= 0 ? 1 : -1) === side)
+            .map((q) => Object.assign(q, { y: pt(cx, cy, r1 + fs * 0.9, q.am).y })).sort((p1, p2) => p1.y - p2.y);
+          for (let k = 1; k < items.length; k++) if (items[k].y - items[k - 1].y < lh) items[k].y = items[k - 1].y + lh;
+          items.forEach((q) => {
+            const from = pt(cx, cy, r1 + 0.5, q.am);
+            const ex = cx + side * (Math.abs(Math.sin(q.am)) * (r1 + fs * 0.6) + fs * 0.25);
+            P.push({ type: "line", x1: from.x, y1: from.y, x2: ex, y2: q.y, color: o.axisColor, w: 0.5 });
+            const x = side > 0 ? ex + fs * 0.25 : ex - fs * 0.25 - q.tw;
+            P.push({ type: "text", x, y: q.y - lh / 2, w: q.tw, h: lh, text: q.lbl, size: fs, color: o.textColor, align: side > 0 ? "left" : "right" });
+          });
+        });
+        if (hole > 0 && o.showTotals) {
+          const t = formatNumber(sum, o), tw = textW(t, fs * 1.25);
+          if (tw < r0 * 1.8) P.push({ type: "text", x: cx - r0, y: cy - fs * 0.85, w: r0 * 2, h: fs * 1.7, text: t, size: fs * 1.25, color: o.textColor, align: "center" });
+        }
+      }
+      if (showCat) P.push({ type: "text", x: cx - cw / 2, y: cy + r1 + vRoom * 0.75, w: cw, h: lh, text: String(cats[c]), size: fs, color: o.textColor, align: "center" });
+    }
+
+    // legend: list on the right, or a row on top
+    if (legendRight) {
+      const x0 = box.x + box.w - legW + fs * 0.6;
+      let y = box.y + legH + availH / 2 - (ser.length * fs * 1.5) / 2;
+      ser.forEach((q, i) => {
+        P.push({ type: "rect", x: x0, y: y + fs * 0.2, w: fs * 0.9, h: fs * 0.9, fill: seriesColor(spec, o, i) });
+        P.push({ type: "text", x: x0 + fs * 1.3, y: y - fs * 0.1, w: textW(names[i], fs), h: fs * 1.3, text: names[i], size: fs, color: o.textColor, align: "left" });
+        y += fs * 1.5;
+      });
+    } else if (legendTop) {
+      let lx = box.x;
+      ser.forEach((q, i) => {
+        P.push({ type: "rect", x: lx + fs * 0.2, y: box.y + fs * 0.4, w: fs, h: fs, fill: seriesColor(spec, o, i) });
+        const tw = textW(names[i], fs);
+        P.push({ type: "text", x: lx + fs * 1.6, y: box.y + fs * 0.1, w: tw, h: fs * 1.6, text: names[i], size: fs, color: o.textColor, align: "left" });
+        lx += fs * 1.6 + tw + fs;
+      });
+    }
+    return { prims: P, box };
+  }
+
+  // SVG path for a ring segment (or a pie slice when r0 = 0)
+  function wedgePath(p) {
+    const f = (v) => +v.toFixed(2);
+    const P = (r, a) => `${f(p.cx + r * Math.sin(a))} ${f(p.cy - r * Math.cos(a))}`;
+    let a1 = p.a1;
+    if (a1 - p.a0 >= Math.PI * 2 - 1e-6) {
+      // a full ring can't be one arc: draw two halves
+      const m = p.a0 + Math.PI;
+      const outer = `M${P(p.r1, p.a0)} A${f(p.r1)} ${f(p.r1)} 0 1 1 ${P(p.r1, m)} A${f(p.r1)} ${f(p.r1)} 0 1 1 ${P(p.r1, p.a0)} Z`;
+      return p.r0 > 0 ? outer + ` M${P(p.r0, p.a0)} A${f(p.r0)} ${f(p.r0)} 0 1 0 ${P(p.r0, m)} A${f(p.r0)} ${f(p.r0)} 0 1 0 ${P(p.r0, p.a0)} Z` : outer;
+    }
+    const large = a1 - p.a0 > Math.PI ? 1 : 0;
+    if (p.r0 > 0) {
+      return `M${P(p.r1, p.a0)} A${f(p.r1)} ${f(p.r1)} 0 ${large} 1 ${P(p.r1, a1)} L${P(p.r0, a1)} A${f(p.r0)} ${f(p.r0)} 0 ${large} 0 ${P(p.r0, p.a0)} Z`;
+    }
+    return `M${f(p.cx)} ${f(p.cy)} L${P(p.r1, p.a0)} A${f(p.r1)} ${f(p.r1)} 0 ${large} 1 ${P(p.r1, a1)} Z`;
+  }
+
+  // One SVG element for a vector primitive (smooth curve or ring segment)
+  function vectorSVG(p) {
+    if (p.type === "wedge") {
+      return `<path d="${wedgePath(p)}" fill="${p.fill}" fill-rule="evenodd" stroke="${p.stroke || "none"}" stroke-width="${p.sw || 0}" stroke-linejoin="round"/>`;
+    }
+    return `<path d="${p.d}" fill="none" stroke="${p.color}" stroke-width="${p.w}"${dashAttrs(p.dash, p.w, "round")} stroke-linejoin="round"/>`;
+  }
+  // Bounding box of a vector primitive
+  function vectorBox(p) {
+    if (p.type === "wedge") return { x0: p.cx - p.r1, y0: p.cy - p.r1, x1: p.cx + p.r1, y1: p.cy + p.r1 };
+    return p.bbox;
+  }
+
   function monotoneTangents(pts) {
     const n = pts.length, d = [], m = new Array(n);
     for (let i = 0; i < n - 1; i++) d.push((pts[i + 1].y - pts[i].y) / (pts[i + 1].x - pts[i].x));
@@ -733,9 +906,9 @@
     out.push(`<rect x="${b.x - pad}" y="${b.y - pad}" width="${b.w + pad * 2}" height="${b.h + pad * 2}" fill="#FFFFFF"/>`);
     layout.prims.forEach((p) => {
       if (p.type === "rect") out.push(`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${p.fill}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.strokeW || 0.75}"` : ""}/>`);
-      else if (p.type === "curve") out.push(`<path d="${p.d}" fill="none" stroke="${p.color}" stroke-width="${p.w}" stroke-linecap="round" stroke-linejoin="round"/>`);
+      else if (p.type === "curve" || p.type === "wedge") out.push(vectorSVG(p));
       else if (p.type === "line" && p.smoothPiece) { /* the curve above replaces these */ }
-      else if (p.type === "line") out.push(`<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" stroke="${p.color}" stroke-width="${p.w}"${p.dash ? ' stroke-dasharray="3 2"' : ""}/>`);
+      else if (p.type === "line") out.push(`<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" stroke="${p.color}" stroke-width="${p.w}"${p.dash ? dashAttrs(p.dash, p.w) : ""}/>`);
       else if (p.type === "tri") {
         const pts = p.dir === "down" ? `${p.x},${p.y} ${p.x + p.w},${p.y} ${p.x + p.w / 2},${p.y + p.h}` : `${p.x},${p.y + p.h} ${p.x + p.w},${p.y + p.h} ${p.x + p.w / 2},${p.y}`;
         out.push(`<polygon points="${pts}" fill="${p.fill}"/>`);
@@ -758,7 +931,7 @@
     return out.join("");
   }
 
-  const api = { layoutChart, toSVG, formatNumber, parseCell, DEFAULTS, DEFAULT_PALETTE, NEG_RED, mergeOptions };
+  const api = { layoutChart, toSVG, formatNumber, parseCell, DEFAULTS, DEFAULT_PALETTE, NEG_RED, mergeOptions, vectorSVG, vectorBox, DASH_PPT };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ChartEngine = api;
 })(typeof self !== "undefined" ? self : this);

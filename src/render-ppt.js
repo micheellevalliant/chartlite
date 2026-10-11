@@ -133,15 +133,16 @@
     } catch (e) { return false; }
   };
 
-  // Inserts all smooth curves as one SVG graphic on `slide`, placed exactly over the chart.
-  // Returns the new shape's id, or null if Office couldn't insert it.
-  async function insertCurves(context, slide, slideId, curves) {
-    const pad = Math.max(...curves.map((c) => c.w)) * 1.5;
-    const x0 = Math.min(...curves.map((c) => c.bbox.x0)) - pad, y0 = Math.min(...curves.map((c) => c.bbox.y0)) - pad;
-    const x1 = Math.max(...curves.map((c) => c.bbox.x1)) + pad, y1 = Math.max(...curves.map((c) => c.bbox.y1)) + pad;
+  // Inserts vector primitives (smooth curves, donut segments) as one SVG graphic on `slide`,
+  // placed exactly over the chart. Returns the new shape's id, or null if Office couldn't insert it.
+  async function insertVectors(context, slide, slideId, prims) {
+    const pad = Math.max(...prims.map((c) => c.w || c.sw || 1)) * 1.5;
+    const boxes = prims.map((c) => ChartEngine.vectorBox(c));
+    const x0 = Math.min(...boxes.map((b) => b.x0)) - pad, y0 = Math.min(...boxes.map((b) => b.y0)) - pad;
+    const x1 = Math.max(...boxes.map((b) => b.x1)) + pad, y1 = Math.max(...boxes.map((b) => b.y1)) + pad;
     const w = +(x1 - x0).toFixed(2), h = +(y1 - y0).toFixed(2);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${w} ${h}">` +
-      curves.map((c) => `<path d="${c.d}" fill="none" stroke="${c.color}" stroke-width="${c.w}" stroke-linecap="round" stroke-linejoin="round"/>`).join("") + `</svg>`;
+      prims.map((c) => ChartEngine.vectorSVG(c)).join("") + `</svg>`;
 
     slide.shapes.load("items/id");
     await context.sync();
@@ -163,7 +164,7 @@
     if (added.length !== 1) { added.forEach((q) => q.delete()); await context.sync(); return null; }
     const g = added[0];
     g.left = x0; g.top = y0; g.width = w; g.height = h;
-    g.name = "ChartLite smooth lines";
+    g.name = prims.some((c) => c.type === "wedge") ? "ChartLite segments" : "ChartLite smooth lines";
     await context.sync();
     return g.id;
   }
@@ -173,29 +174,36 @@
     const shapes = slide.shapes;
     const layout = ChartEngine.layoutChart(spec, box);
     const ctx = { canRotate: supports("1.10"), fontName: (spec.options || {}).fontName || "" };
-    const curves = layout.prims.filter((p) => p.type === "curve");
-    const useSvg = curves.length > 0 && supportsSvg();
+    const isVec = (p) => p.type === "curve" || p.type === "wedge";
+    const vectors = layout.prims.filter(isVec);
+    const needsSvg = vectors.some((p) => p.type === "wedge");   // donut/pie: no shape-based fallback
+    const useSvg = vectors.length > 0 && supportsSvg();
+    if (needsSvg && !useSvg) throw new Error("Donut and pie charts need a newer Office (Microsoft 365 with vector graphic support).");
     const draw = (list) => [].concat(...list.map((p) => drawPrimitive(shapes, p, ctx))).filter(Boolean);
 
-    let created, svgId = null;
+    // ids in back-to-front order: bars/axes, then the vector graphic, then bullets/labels/leaders
+    let below, above = [], svgId = null;
     if (!useSvg) {
-      created = draw(layout.prims.filter((p) => p.type !== "curve"));
+      below = draw(layout.prims.filter((p) => !isVec(p)));
     } else {
-      // bars and axes below the curves, dots and labels above them
-      const split = layout.prims.findIndex((p) => p.type === "curve");
-      created = draw(layout.prims.slice(0, split).filter((p) => p.type !== "curve" && !p.smoothPiece));
+      const split = layout.prims.findIndex(isVec);
+      below = draw(layout.prims.slice(0, split).filter((p) => !isVec(p) && !p.smoothPiece));
       slide.load("id");
-      created.forEach((q) => q.load("id"));
+      below.forEach((q) => q.load("id"));
       await context.sync();
-      svgId = await insertCurves(context, slide, slide.id, curves);
-      if (!svgId) created = created.concat(draw(layout.prims.filter((p) => p.smoothPiece)));   // fallback
-      created = created.concat(draw(layout.prims.slice(split).filter((p) => p.type !== "curve" && !p.smoothPiece)));
+      svgId = await insertVectors(context, slide, slide.id, vectors);
+      if (!svgId && needsSvg) {
+        below.forEach((q) => q.delete());
+        await context.sync();
+        throw new Error("PowerPoint couldn't insert the donut graphic. Click on the slide (not in a text box) and try again.");
+      }
+      if (!svgId) below = below.concat(draw(layout.prims.filter((p) => p.smoothPiece)));   // fallback
+      above = draw(layout.prims.slice(split).filter((p) => !isVec(p) && !p.smoothPiece));
     }
-    created.forEach((q) => q.load("id"));
+    below.concat(above).forEach((q) => q.load("id"));
     await context.sync();
 
-    const ids = created.map((q) => q.id);
-    if (svgId) ids.push(svgId);
+    const ids = below.map((q) => q.id).concat(svgId ? [svgId] : [], above.map((q) => q.id));
     const group = shapes.addGroup(ids);
     group.name = "ChartLite Chart";
     group.tags.add(TAG_SPEC, JSON.stringify(spec));

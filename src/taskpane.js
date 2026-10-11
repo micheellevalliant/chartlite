@@ -72,6 +72,9 @@
       labelPos: v("labelPos"),
       markerShape: v("markerShape"),
       showAxis: v("showAxis") === "1",
+      lineWidth: parseFloat(v("lineWidth")) || 1.75,
+      lineDash: v("lineDash") || "solid",
+      holeSize: parseFloat(v("holeSize")) || 0.55,
     };
   }
 
@@ -92,6 +95,11 @@
     set("labelPos", o.labelPos || "auto");
     set("markerShape", o.markerShape || "circle");
     $("showAxis").value = o.showAxis ? "1" : "";
+    $("lineWidth").value = String(o.lineWidth || 1.75);
+    if (!$("lineWidth").value) $("lineWidth").value = "1.75";
+    set("lineDash", o.lineDash || "solid");
+    $("holeSize").value = String(o.holeSize || 0.55);
+    if (!$("holeSize").value) $("holeSize").value = "0.55";
     state.deltas = (o.deltas || []).map((d) => ({ from: d.from, to: d.to, mode: d.mode || "pct" }));
     renderArrowControls(o.cagr || null);
   }
@@ -114,6 +122,8 @@
         if (type === "combo") { out.kind = s.kind || "bar"; out.axis = s.axis || "primary"; }
         if (s.unit) out.unit = s.unit;
         if (s.labelPos && s.labelPos !== "auto") out.labelPos = s.labelPos;
+        if (s.lineWeight) out.lineWeight = s.lineWeight;
+        if (s.dash) out.dash = s.dash;
         return out;
       }),
       options: readOptions(),
@@ -132,6 +142,8 @@
       axis: s.axis || "primary",
       unit: s.unit,
       labelPos: s.labelPos || "auto",
+      lineWeight: s.lineWeight || null,
+      dash: s.dash || "",
       raw: (s.values || []).map((v) => toRaw(v, loc)),
     }));
     writeOptions(spec.options || {});
@@ -156,10 +168,6 @@
         html += `<select data-kind="${i}"><option value="bar"${s.kind !== "line" ? " selected" : ""}>Bar</option><option value="line"${s.kind === "line" ? " selected" : ""}>Line</option></select>`;
         html += `<select data-axis="${i}" title="Secondary axis draws the line above the bars on its own scale"><option value="primary"${s.axis !== "secondary" ? " selected" : ""}>Axis 1</option><option value="secondary"${s.axis === "secondary" ? " selected" : ""}>Axis 2</option></select>`;
       }
-      const lp = s.labelPos || "auto";
-      html += `<select class="lpos" data-lpos="${i}" title="Label position for this series">` +
-        [["auto", "Auto"], ["above", "↑ Above"], ["center", "● Center"], ["below", "↓ Below"], ["none", "✕ None"]]
-          .map(([v, t]) => `<option value="${v}"${lp === v ? " selected" : ""}>${t}</option>`).join("") + `</select>`;
       html += `</td>`;
       for (let j = 0; j < n; j++) {
         const r = s.raw[j] === undefined ? "" : s.raw[j];
@@ -171,9 +179,45 @@
     $("wfHint").hidden = !wf;
     document.querySelectorAll(".y2").forEach((el) => { el.style.display = combo ? "" : "none"; });
     $("wfPanel").style.display = wf ? "" : "none";
+    const round = state.type === "donut" || state.type === "pie";
+    document.querySelectorAll(".donutOnly").forEach((el) => { el.style.display = state.type === "donut" ? "" : "none"; });
+    $("wfHint").hidden = !wf;
+    if (round) $("wfHint").hidden = true;
+    renderSeriesStyles();
     renderArrowControls();
     if (!applyingSheet) scheduleSheetPush();
   }
+
+  const isLineSeries = (s) => state.type === "line" || (state.type === "combo" && s.kind === "line");
+  const WEIGHTS = [["", "Default"], ["0.5", "½ pt"], ["0.75", "¾ pt"], ["1", "1 pt"], ["1.5", "1½ pt"], ["1.75", "1¾ pt"], ["2.25", "2¼ pt"], ["3", "3 pt"], ["4.5", "4½ pt"], ["6", "6 pt"]];
+  const DASHES = [["", "Default"], ["solid", "━━ Solid"], ["dash", "╸╸ Dashed"], ["longDash", "━ ━ Long dash"], ["roundDot", "···· Dotted"], ["dashDot", "━·━ Dash-dot"]];
+  const LPOS = [["auto", "Auto"], ["above", "↑ Above"], ["center", "● Center"], ["below", "↓ Below"], ["none", "✕ None"]];
+  const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}"${String(cur) === v ? " selected" : ""}>${t}</option>`).join("");
+  function renderSeriesStyles() {
+    const anyLine = state.series.some(isLineSeries);
+    let h = `<div class="shead"><span></span><span>Series</span><span>Labels</span><span>${anyLine ? "Weight" : ""}</span><span>${anyLine ? "Line type" : ""}</span></div>`;
+    state.series.forEach((s, i) => {
+      const col = s.color || E.DEFAULT_PALETTE[i % E.DEFAULT_PALETTE.length];
+      h += `<div class="srow"><span class="sw" style="background:${col}"></span><span class="nm" title="${attr(s.name)}">${attr(s.name || "Series " + (i + 1))}</span>`;
+      h += `<select data-lpos="${i}" title="Label position for this series">${opts(LPOS, s.labelPos || "auto")}</select>`;
+      if (isLineSeries(s)) {
+        h += `<select data-lw="${i}" title="Line weight">${opts(WEIGHTS, s.lineWeight ? String(s.lineWeight) : "")}</select>`;
+        h += `<select data-dash="${i}" title="Line type">${opts(DASHES, s.dash || "")}</select>`;
+      } else {
+        h += `<span class="na">${anyLine ? "bars" : ""}</span>`;
+      }
+      h += `</div>`;
+    });
+    $("seriesStyles").innerHTML = h;
+  }
+  $("seriesStyles").addEventListener("change", (ev) => {
+    const d = ev.target.dataset;
+    if (d.lpos !== undefined) state.series[+d.lpos].labelPos = ev.target.value;
+    else if (d.lw !== undefined) state.series[+d.lw].lineWeight = parseFloat(ev.target.value) || null;
+    else if (d.dash !== undefined) state.series[+d.dash].dash = ev.target.value;
+    else return;
+    refresh();
+  });
 
   function attr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
   function isNeg(r) { const v = E.parseCell(r, locale); return typeof v === "number" && v < 0; }
@@ -183,13 +227,14 @@
     if (d.cat !== undefined) { state.categories[+d.cat] = el.value; renderArrowControls(); }
     else if (d.sname !== undefined) state.series[+d.sname].name = el.value;
     else if (d.color !== undefined) state.series[+d.color].color = el.value;
-    else if (d.kind !== undefined) state.series[+d.kind].kind = el.value;
+    else if (d.kind !== undefined) { state.series[+d.kind].kind = el.value; renderSeriesStyles(); }
     else if (d.axis !== undefined) state.series[+d.axis].axis = el.value;
-    else if (d.lpos !== undefined) state.series[+d.lpos].labelPos = el.value;
+
     else if (d.r !== undefined) {
       state.series[+d.r].raw[+d.c] = el.value;
       el.classList.toggle("neg", isNeg(el.value));
     }
+    if (d.sname !== undefined || d.color !== undefined) renderSeriesStyles();
     if (d.cat !== undefined || d.sname !== undefined || d.r !== undefined) scheduleSheetPush();
     refresh();
   });
@@ -495,6 +540,8 @@
     wfUp:       { type: "waterfall", categories: ["Last year", "Growth A", "Growth B", "Decline", "This year"], series: [["Value", [100, 20, 15, -10, "e"]]] },
     wfDown:     { type: "waterfall", categories: ["Total", "Part A", "Part B", "Part C"], series: [["Value", [100, -40, -35, -25]]] },
     line:       { type: "line", categories: ["2024", "2025", "2026"], series: [["Series 1", [4.1, 5.3, 3.2]], ["Series 2", [5.1, 2.4, 2]]] },
+    pie:        { type: "pie", categories: ["2025"], series: [["Segment A", [40]], ["Segment B", [25]], ["Segment C", [20]], ["Segment D", [15]]] },
+    donut:      { type: "donut", categories: ["2025"], series: [["Segment A", [40]], ["Segment B", [25]], ["Segment C", [20]], ["Segment D", [15]]] },
     combo:      { type: "combo", categories: ["2024", "2025", "2026"], series: [["Sales", [10, 12, 14], { kind: "bar" }], ["Growth", [80, 95, 90], { kind: "line", axis: "secondary", unit: "%" }]] },
   };
   function applyPreset(key) {
@@ -517,12 +564,14 @@
     target = null;                       // a tile always makes a new chart
     $("btnUpdate").disabled = true;
     if (inOffice && pptReady()) {
+      let ok = false;
       guarded(async () => {
         const r = await ChartPPT.insertChart(buildSpec());
         target = { id: r.id, slideId: r.slideId };
         $("btnUpdate").disabled = false;
+        ok = true;
         setStatus("Chart inserted" + r.note + ". Type or paste your numbers in the datasheet.", "ok");
-      }).then(openDatasheet);
+      }).then(() => { if (ok) openDatasheet(); });
     } else {
       openDatasheet();
       setStatus("Preview mode — the chart is inserted when this panel runs inside PowerPoint.");
@@ -589,6 +638,7 @@
         name: s.name, raw: s.raw.slice(), color: o.color || "",
         kind: o.kind || (state.type === "combo" && i > 0 ? "line" : "bar"),
         axis: o.axis || "primary", labelPos: o.labelPos || "auto", unit: o.unit,
+        lineWeight: o.lineWeight || null, dash: o.dash || "",
       };
     });
     state.deltas = state.deltas.filter((d) => d.from < state.categories.length && d.to < state.categories.length);
@@ -688,7 +738,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.3.1";
+  const VERSION = "1.4.0";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 

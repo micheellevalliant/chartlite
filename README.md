@@ -38,7 +38,7 @@ Each work session, double-click `start.bat` again (it starts the small local ser
 
 ### Fastest way: Elements + datasheet
 
-1. In the ChartLite panel, click a chart in **Elements**: Stacked, 100%, Clustered, Build-up waterfall, Build-down waterfall, Line or Combination.
+1. In the ChartLite panel, click a chart in **Elements**: Stacked, 100%, Clustered, Build-up waterfall, Build-down waterfall, Line, Combination, Pie or Doughnut.
 2. The chart is placed on the current slide with sample numbers, and the **datasheet** opens in its own window. It works like a small Excel sheet:
    - Row 1 holds the category names (years, months…) and column A the series names. The shaded cells are the headers.
    - Type over any cell, or copy a range in Excel and press **Ctrl+V** in the datasheet.
@@ -87,6 +87,15 @@ Note: manual tweaks made directly to shapes inside a chart (recoloring one bar, 
 - **Value axis**: *Shown* draws a vertical scale with tick labels on the left. Combine it with **Axis min / max** to start the scale at, say, 4 when your values sit around 5.
 - **Legend**: *Auto* puts series names next to the stacked bars (left, or right when the value axis is shown) and at the end of each line. You can also choose *Top*, *Left of bars* or *Right / line ends*.
 
+### Series style (line weight and line type)
+
+Under **Series style** each series has its own row:
+- **Labels**: where that series' value labels go (Auto, Above, Center, Below, None).
+- **Weight** (lines only): ½ pt up to 6 pt.
+- **Line type** (lines only): Solid, Dashed, Long dash, Dotted or Dash-dot. Typical use: plan or forecast dashed, actual solid and thick, last year dotted.
+
+*Default* uses the chart-wide **Line weight** and **Line type** under *Scale & lines*. Dashes also work on smooth lines.
+
 ## 5. Scale & lines
 
 - **Axis min / Axis max** — set where the value scale starts and ends. If your values sit around 5,000,000, set Axis min to 4,000,000 (type it the way your data is written) so the trend is visible instead of flat bars from zero. Leave blank for automatic.
@@ -99,6 +108,11 @@ Note: manual tweaks made directly to shapes inside a chart (recoloring one bar, 
 These settings are saved with the chart, so they come back when you select it again.
 
 ## 6. Chart-type notes
+
+**Pie and Doughnut**: each **column** in the datasheet is one pie or doughnut, and each **row** (series) is a segment. Two columns give two doughnuts side by side, which is handy for comparing two periods or regions.
+- Labels show each segment's share in % (switch off *100%: show shares* under Labels & numbers to show the values instead). They sit inside the segment when they fit, and outside with a thin leader line when they don't.
+- The doughnut shows the total in its centre (turn off *Totals* to hide it). Hole size is under *Scale & lines → Doughnut hole*.
+- The segments are drawn as one vector graphic, so they need a current Microsoft 365 build. Older Office versions show a message instead.
 
 **Waterfall** — uses the first series. The first value is the start bar, following values are changes (+/−), and typing **`e`** in a cell creates a total bar at that point. Example — a travel budget estimate:
 

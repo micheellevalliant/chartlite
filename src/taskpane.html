@@ -17,6 +17,8 @@
       <option value="waterfall">Waterfall / bridge</option>
       <option value="line">Line</option>
       <option value="combo">Combo (bar + line)</option>
+      <option value="pie">Pie</option>
+      <option value="donut">Doughnut</option>
     </select>
   </header>
 
@@ -30,6 +32,8 @@
       <button class="tile" data-preset="wfDown" title="Insert a build-down waterfall chart"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="5" height="23" fill="#1F3B57"/><rect x="10" y="5" width="5" height="9" fill="#3E6E9E"/><rect x="17" y="14" width="5" height="8" fill="#3E6E9E"/><rect x="24" y="22" width="5" height="6" fill="#3E6E9E"/><line x1="8" y1="5" x2="10" y2="5" stroke="#7f8a96"/><line x1="15" y1="14" x2="17" y2="14" stroke="#7f8a96"/><line x1="22" y1="22" x2="24" y2="22" stroke="#7f8a96"/><line x1="3" y1="28.5" x2="29" y2="28.5" stroke="#7f8a96" stroke-width="1"/></svg><span>Build-down waterfall</span></button>
       <button class="tile" data-preset="line" title="Insert a line chart"><svg viewBox="0 0 32 32" aria-hidden="true"><polyline points="4,20 11,13 18,17 27,6" fill="none" stroke="#1F3B57" stroke-width="2"/><polyline points="4,25 11,22 18,24 27,16" fill="none" stroke="#9DBCDD" stroke-width="2"/><circle cx="11" cy="13" r="1.8" fill="#1F3B57"/><circle cx="18" cy="17" r="1.8" fill="#1F3B57"/><circle cx="27" cy="6" r="1.8" fill="#1F3B57"/><line x1="3" y1="28.5" x2="29" y2="28.5" stroke="#7f8a96" stroke-width="1"/></svg><span>Line</span></button>
       <button class="tile" data-preset="combo" title="Insert a combination chart"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="17" width="6" height="11" fill="#3E6E9E"/><rect x="13" y="14" width="6" height="14" fill="#3E6E9E"/><rect x="22" y="12" width="6" height="16" fill="#3E6E9E"/><polyline points="7,10 16,6 25,8" fill="none" stroke="#1F3B57" stroke-width="2"/><circle cx="7" cy="10" r="1.8" fill="#1F3B57"/><circle cx="16" cy="6" r="1.8" fill="#1F3B57"/><circle cx="25" cy="8" r="1.8" fill="#1F3B57"/><line x1="3" y1="28.5" x2="29" y2="28.5" stroke="#7f8a96" stroke-width="1"/></svg><span>Combination</span></button>
+      <button class="tile" data-preset="pie" title="Insert a pie chart"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 16 L16.00 4.00 A12 12 0 0 1 21.78 26.52 Z" fill="#1F3B57" stroke="#fff" stroke-width="0.8"/><path d="M16 16 L21.78 26.52 A12 12 0 0 1 4.59 19.71 Z" fill="#3E6E9E" stroke="#fff" stroke-width="0.8"/><path d="M16 16 L4.59 19.71 A12 12 0 0 1 7.79 7.25 Z" fill="#9DBCDD" stroke="#fff" stroke-width="0.8"/><path d="M16 16 L7.79 7.25 A12 12 0 0 1 16.00 4.00 Z" fill="#C9D9EA" stroke="#fff" stroke-width="0.8"/></svg><span>Pie</span></button>
+      <button class="tile" data-preset="donut" title="Insert a doughnut chart"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16.00 3.50 A12.5 12.5 0 0 1 22.02 26.95 L19.13 21.70 A6.5 6.5 0 0 0 16.00 9.50 Z" fill="#1F3B57" stroke="#fff" stroke-width="0.8"/><path d="M22.02 26.95 A12.5 12.5 0 0 1 4.11 19.86 L9.82 18.01 A6.5 6.5 0 0 0 19.13 21.70 Z" fill="#3E6E9E" stroke="#fff" stroke-width="0.8"/><path d="M4.11 19.86 A12.5 12.5 0 0 1 7.44 6.89 L11.55 11.26 A6.5 6.5 0 0 0 9.82 18.01 Z" fill="#9DBCDD" stroke="#fff" stroke-width="0.8"/><path d="M7.44 6.89 A12.5 12.5 0 0 1 16.00 3.50 L16.00 9.50 A6.5 6.5 0 0 0 11.55 11.26 Z" fill="#C9D9EA" stroke="#fff" stroke-width="0.8"/></svg><span>Doughnut</span></button>
     </div>
     <p class="hint">Click a chart to insert it on the current slide — the datasheet opens so you can type or paste your numbers.</p>
   </details>
@@ -62,6 +66,11 @@
     </div>
     <p id="wfHint" class="hint" hidden>Waterfall: first value is the start bar, then changes (+/−). Type <b>e</b> in a cell for a total bar.</p>
     <div class="sheet-wrap"><table id="sheet" class="sheet"></table></div>
+  </details>
+
+  <details class="panel" open id="seriesPanel">
+    <summary>Series style</summary>
+    <div id="seriesStyles" class="sstyles"></div>
   </details>
 
   <details class="panel">
@@ -125,6 +134,13 @@
     </div>
     <div class="checks">
       <label class="check"><input type="checkbox" id="smooth" /> Smooth lines</label>
+    </div>
+    <div class="grid">
+      <label>Line weight <select id="lineWidth" title="Default for all lines; each series can override it under Series style"><option value="0.5">½ pt</option><option value="0.75">¾ pt</option><option value="1">1 pt</option><option value="1.5">1½ pt</option><option value="1.75" selected>1¾ pt</option><option value="2.25">2¼ pt</option><option value="3">3 pt</option><option value="4.5">4½ pt</option><option value="6">6 pt</option></select></label>
+      <label>Line type <select id="lineDash" title="Default for all lines; each series can override it under Series style"><option value="solid">━━━ Solid</option><option value="dash">╸ ╸ ╸ Dashed</option><option value="longDash">━ ━ ━ Long dash</option><option value="roundDot">· · · · Dotted</option><option value="dashDot">━ · ━ · Dash-dot</option></select></label>
+      <label class="donutOnly">Doughnut hole
+        <select id="holeSize"><option value="0.4">Small</option><option value="0.55" selected>Medium</option><option value="0.7">Large</option></select>
+      </label>
     </div>
     <div class="grid">
       <label>Bullet size
