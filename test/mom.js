@@ -18,3 +18,14 @@ for (let i = 0; i < bubbles.length; i++) for (let j = i + 1; j < bubbles.length;
 const bars = L.prims.filter((p) => p.type === "rect" && p.role === "bar");
 assert(Math.max(...bars.map((b) => b.h)) > 320 * 0.6, "bars squashed");
 console.log(`MoM arrows: 11 arrows in ${rows.size} rows, no overlaps`);
+
+// CAGR and difference arrows can show %, absolute, or both
+const T = (opts) => E.layoutChart({ type: "stacked", categories: ["2022", "2023", "2024", "2025"], series: [{ name: "R", values: [100, 110, 125, 133.1] }], options: opts }, { x: 0, y: 0, w: 600, h: 320 })
+  .prims.filter((p) => p.type === "text" && p.round).map((p) => p.text);
+assert.deepStrictEqual(T({ cagr: { from: 0, to: 3 } }), ["CAGR +10.0%"]);
+assert.deepStrictEqual(T({ cagr: { from: 0, to: 3, mode: "abs" } }), ["+33"]);
+assert.deepStrictEqual(T({ cagr: { from: 0, to: 3, mode: "pctAbs" }, decimals: 1 }), ["CAGR +10.0% (+33.1)"]);
+assert.deepStrictEqual(T({ cagr: { from: 0, to: 3, mode: "absPct" }, scalePow: 0 }), ["+33 (CAGR +10.0%)"]);
+assert.deepStrictEqual(T({ deltas: [{ from: 2, to: 3, mode: "pctAbs" }], decimals: 1 }), ["+6.5% (+8.1)"]);
+assert.deepStrictEqual(T({ deltas: [{ from: 0, to: 1, mode: "absPct" }], locale: "id" }), ["+10 (+10,0%)"]);
+console.log("CAGR / difference arrow content: all checks passed");

@@ -136,7 +136,7 @@ Increases are green, decreases red, start/total bars dark (change under *Waterfa
 
 **Combo** — in the datasheet, set a series to *Line*. Choose *Axis 2* for things like achievement % so the line gets its own scale and sits above the bars.
 
-**Growth arrows**: *CAGR from/to* draws a compound-growth arrow between two categories, based on the category totals. *+ Difference arrow* adds a % change or absolute difference arrow between any two categories. **+ Between all neighbours (MoM)** adds a % arrow between every pair of neighbouring bars in one click (month-on-month, quarter-on-quarter, year-on-year); switch any of them to *Absolute* or remove it in the list. Arrows that don't overlap share a row, so twelve months of MoM arrows take only one or two rows above the chart. *Remove all* clears every arrow.
+**Growth arrows**: *CAGR from/to* draws a compound-growth arrow between two categories, based on the category totals. *+ Difference arrow* adds a % change or absolute difference arrow between any two categories. **+ Between all neighbours (MoM)** adds a % arrow between every pair of neighbouring bars in one click (month-on-month, quarter-on-quarter, year-on-year); switch any of them to *Absolute* or remove it in the list. Arrows that don't overlap share a row, so twelve months of MoM arrows take only one or two rows above the chart. *Remove all* clears every arrow. Every arrow, including CAGR (*CAGR shows*), can display **%**, **Absolute**, **% (Absolute)**, e.g. `CAGR +6.1% (+45)`, or **Absolute (%)**, e.g. `+45 (CAGR +6.1%)`. The absolute figure is the total change between the two bars and follows the *Number scale*.
 
 ## 7. Use it permanently without running a server (optional)
 

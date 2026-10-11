@@ -294,22 +294,26 @@
     const axisW = ticks.length ? Math.max(...ticks.map((t) => textW(tickLabel(t), fs))) + fs * 0.5 : 0;
     const arrows = [];
     if (o.cagr && o.cagr.from !== undefined && o.cagr.to !== undefined && o.cagr.from !== o.cagr.to && !isWF)
-      arrows.push({ from: +o.cagr.from, to: +o.cagr.to, mode: "cagr" });
+      arrows.push({ from: +o.cagr.from, to: +o.cagr.to, mode: "cagr", show: o.cagr.mode || "pct" });
     (o.deltas || []).forEach((d) => { if (d.from !== d.to) arrows.push({ from: +d.from, to: +d.to, mode: d.mode || "pct" }); });
     const valid = arrows.filter((a) => a.from >= 0 && a.to >= 0 && a.from < n && a.to < n);
     // arrow labels first (their width decides how arrows share rows)
     const arrowBase = (c) => (isWF ? cat[c].total : barIdx.length ? cat[c].total : num(spec.series[lineIdx[0]].values[c]));
+    // what a bubble shows: "pct" | "abs" | "pctAbs" (+5.7% (+50)) | "absPct" (+50 (+5.7%))
     valid.forEach((a) => {
-      const va = arrowBase(a.from), vb = arrowBase(a.to);
-      if (a.mode === "cagr") {
-        const g = va > 0 && vb > 0 ? (Math.pow(vb / va, 1 / Math.abs(a.to - a.from)) - 1) * 100 : NaN;
-        a.text = isNaN(g) ? "CAGR n/a" : "CAGR " + formatNumber(g, o, { decimals: 1, unit: "%", prefix: "", sign: true }); a.isNeg = g < 0;
-      } else if (a.mode === "abs") {
-        a.text = formatNumber(vb - va, o, { sign: true }); a.isNeg = vb - va < 0;
-      } else {
-        const g = va !== 0 ? ((vb - va) / Math.abs(va)) * 100 : NaN;
-        a.text = isNaN(g) ? "n/a" : formatNumber(g, o, { decimals: 1, unit: "%", prefix: "", sign: true }); a.isNeg = g < 0;
-      }
+      const va = arrowBase(a.from), vb = arrowBase(a.to), diff = vb - va;
+      const pctVal = a.mode === "cagr"
+        ? (va > 0 && vb > 0 ? (Math.pow(vb / va, 1 / Math.abs(a.to - a.from)) - 1) * 100 : NaN)
+        : (va !== 0 ? (diff / Math.abs(va)) * 100 : NaN);
+      const pctTxt = isNaN(pctVal) ? "n/a" : formatNumber(pctVal, o, { decimals: 1, unit: "%", prefix: "", sign: true });
+      const absTxt = formatNumber(diff, o, { sign: true });
+      const pre = a.mode === "cagr" ? "CAGR " : "";
+      const show = a.mode === "cagr" ? a.show : a.mode;
+      a.text = show === "abs" ? absTxt
+        : show === "pctAbs" ? `${pre}${pctTxt} (${absTxt})`
+        : show === "absPct" ? `${absTxt} (${pre}${pctTxt})`
+        : pre + pctTxt;
+      a.isNeg = show === "abs" || isNaN(pctVal) ? diff < 0 : pctVal < 0;
     });
     // pack arrows into rows: arrows that don't overlap (bubble included) share a row, so
     // month-on-month arrows sit side by side, staggering into a second row only when needed

@@ -58,7 +58,7 @@
       showLegend: c("showLegend"),
       pct100Labels: c("pct100Labels"),
       barWidth: parseFloat(v("barWidth")),
-      cagr: cf !== "" && ct !== "" ? { from: +cf, to: +ct } : null,
+      cagr: cf !== "" && ct !== "" ? { from: +cf, to: +ct, mode: v("cagrMode") || "pct" } : null,
       deltas: state.deltas.map((d) => ({ from: d.from, to: d.to, mode: d.mode })),
       wf: { start: v("wfTotal"), total: v("wfTotal"), up: v("wfUp"), down: v("wfDown") },
       connectors: c("connectors"),
@@ -438,13 +438,15 @@
       return f !== "" && t !== "" ? { from: +f, to: +t } : null;
     })();
     const ok = cur && cur.from < n && cur.to < n;
+    if (cagr !== undefined) $("cagrMode").value = (cagr && cagr.mode) || "pct";
     $("cagrFrom").innerHTML = opts(ok ? cur.from : -1);
     $("cagrTo").innerHTML = opts(ok ? cur.to : -1);
     $("deltaList").innerHTML = state.deltas.map((d, k) => `
       <div class="delta" data-k="${k}">
         <select data-f="from">${opts(d.from).replace('<option value="">—</option>', "")}</select>
         <select data-f="to">${opts(d.to).replace('<option value="">—</option>', "")}</select>
-        <select data-f="mode"><option value="pct"${d.mode === "pct" ? " selected" : ""}>% change</option><option value="abs"${d.mode === "abs" ? " selected" : ""}>Absolute</option></select>
+        <select data-f="mode">${[["pct", "%"], ["abs", "Absolute"], ["pctAbs", "% (Absolute)"], ["absPct", "Absolute (%)"]]
+          .map(([v, t]) => `<option value="${v}"${d.mode === v ? " selected" : ""}>${t}</option>`).join("")}</select>
         <button data-f="del" title="Remove">×</button>
       </div>`).join("");
   }
@@ -767,7 +769,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.5.1";
+  const VERSION = "1.5.2";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 
