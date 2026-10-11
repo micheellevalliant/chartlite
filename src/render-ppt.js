@@ -102,7 +102,7 @@
         s.lineFormat.visible = false;
         break;
       case "dot":
-        s = shapes.addGeometricShape("Ellipse", pos(p.x, p.y, p.w, p.h));
+        s = shapes.addGeometricShape({ square: "Rectangle", diamond: "Diamond", triangle: "Triangle" }[p.shape] || "Ellipse", pos(p.x, p.y, p.w, p.h));
         if (p.fill) s.fill.setSolidColor(p.fill); else s.fill.clear();
         if (p.stroke) { s.lineFormat.color = p.stroke; s.lineFormat.weight = p.strokeW || 0.75; }
         else s.lineFormat.visible = false;

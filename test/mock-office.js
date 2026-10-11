@@ -1,7 +1,7 @@
 // Minimal strict mock of the PowerPoint JS API surface ChartLite uses.
 // Throws on unknown enum values / bad sizes so renderer mistakes surface in tests.
 (function () {
-  const GEOM = new Set(["Rectangle", "RoundRectangle", "Ellipse", "Triangle", "FlowChartMerge"]);
+  const GEOM = new Set(["Rectangle", "RoundRectangle", "Ellipse", "Triangle", "FlowChartMerge", "Diamond"]);
   const DASH = new Set(["Dash", "DashDot", "DashDotDot", "LongDash", "LongDashDot", "RoundDot", "Solid", "SquareDot", "LongDashDotDot", "SystemDash", "SystemDot", "SystemDashDot"]);
   const AUTOSIZE = new Set(["AutoSizeNone", "AutoSizeTextToFitShape", "AutoSizeShapeToFitText"]);
   const VALIGN = new Set(["Top", "Middle", "Bottom", "TopCentered", "MiddleCentered", "BottomCentered"]);

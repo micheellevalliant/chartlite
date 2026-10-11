@@ -69,6 +69,9 @@
       markerSize: numOpt("markerSize"),
       markerFill: v("markerFill"),
       legendPos: v("legendPos"),
+      labelPos: v("labelPos"),
+      markerShape: v("markerShape"),
+      showAxis: v("showAxis") === "1",
     };
   }
 
@@ -86,6 +89,9 @@
     chk("smooth", o.smooth);
     set("markerFill", o.markerFill || "solid");
     set("legendPos", o.legendPos || "auto");
+    set("labelPos", o.labelPos || "auto");
+    set("markerShape", o.markerShape || "circle");
+    $("showAxis").value = o.showAxis ? "1" : "";
     state.deltas = (o.deltas || []).map((d) => ({ from: d.from, to: d.to, mode: d.mode || "pct" }));
     renderArrowControls(o.cagr || null);
   }
@@ -107,6 +113,7 @@
         if (s.color) out.color = s.color;
         if (type === "combo") { out.kind = s.kind || "bar"; out.axis = s.axis || "primary"; }
         if (s.unit) out.unit = s.unit;
+        if (s.labelPos && s.labelPos !== "auto") out.labelPos = s.labelPos;
         return out;
       }),
       options: readOptions(),
@@ -124,6 +131,7 @@
       kind: s.kind || "bar",
       axis: s.axis || "primary",
       unit: s.unit,
+      labelPos: s.labelPos || "auto",
       raw: (s.values || []).map((v) => toRaw(v, loc)),
     }));
     writeOptions(spec.options || {});
@@ -148,6 +156,10 @@
         html += `<select data-kind="${i}"><option value="bar"${s.kind !== "line" ? " selected" : ""}>Bar</option><option value="line"${s.kind === "line" ? " selected" : ""}>Line</option></select>`;
         html += `<select data-axis="${i}" title="Secondary axis draws the line above the bars on its own scale"><option value="primary"${s.axis !== "secondary" ? " selected" : ""}>Axis 1</option><option value="secondary"${s.axis === "secondary" ? " selected" : ""}>Axis 2</option></select>`;
       }
+      const lp = s.labelPos || "auto";
+      html += `<select class="lpos" data-lpos="${i}" title="Label position for this series">` +
+        [["auto", "Auto"], ["above", "↑ Above"], ["center", "● Center"], ["below", "↓ Below"], ["none", "✕ None"]]
+          .map(([v, t]) => `<option value="${v}"${lp === v ? " selected" : ""}>${t}</option>`).join("") + `</select>`;
       html += `</td>`;
       for (let j = 0; j < n; j++) {
         const r = s.raw[j] === undefined ? "" : s.raw[j];
@@ -160,6 +172,7 @@
     document.querySelectorAll(".y2").forEach((el) => { el.style.display = combo ? "" : "none"; });
     $("wfPanel").style.display = wf ? "" : "none";
     renderArrowControls();
+    if (!applyingSheet) scheduleSheetPush();
   }
 
   function attr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
@@ -172,10 +185,12 @@
     else if (d.color !== undefined) state.series[+d.color].color = el.value;
     else if (d.kind !== undefined) state.series[+d.kind].kind = el.value;
     else if (d.axis !== undefined) state.series[+d.axis].axis = el.value;
+    else if (d.lpos !== undefined) state.series[+d.lpos].labelPos = el.value;
     else if (d.r !== undefined) {
       state.series[+d.r].raw[+d.c] = el.value;
       el.classList.toggle("neg", isNeg(el.value));
     }
+    if (d.cat !== undefined || d.sname !== undefined || d.r !== undefined) scheduleSheetPush();
     refresh();
   });
   $("sheet").addEventListener("change", (ev) => { if (ev.target.tagName === "SELECT") refresh(); });
@@ -466,11 +481,127 @@
   });
   $("chartType").addEventListener("change", () => {
     state.type = $("chartType").value;
-    if (state.type === "waterfall" && !state.series[0].raw.some((r) => /^e$/i.test(String(r).trim()))) {
+    if (state.type === "waterfall" && state.series[0] && !state.series[0].raw.some((r) => /^e$/i.test(String(r).trim()))) {
       setStatus("Tip: type e in the last cell for an end total.", "");
     }
     renderSheet(); refresh();
   });
+
+  // ------------------------------------------------------------------ Elements gallery
+  const PRESETS = {
+    stacked:    { type: "stacked", categories: ["2024", "2025", "2026"], series: [["Series 1", [10, 12, 14]], ["Series 2", [6, 7, 9]], ["Series 3", [3, 4, 6]]] },
+    stacked100: { type: "stacked100", categories: ["2024", "2025", "2026"], series: [["Series 1", [10, 12, 14]], ["Series 2", [6, 7, 9]], ["Series 3", [3, 4, 6]]] },
+    clustered:  { type: "clustered", categories: ["2024", "2025", "2026"], series: [["Series 1", [10, 12, 14]], ["Series 2", [8, 11, 15]]] },
+    wfUp:       { type: "waterfall", categories: ["Last year", "Growth A", "Growth B", "Decline", "This year"], series: [["Value", [100, 20, 15, -10, "e"]]] },
+    wfDown:     { type: "waterfall", categories: ["Total", "Part A", "Part B", "Part C"], series: [["Value", [100, -40, -35, -25]]] },
+    line:       { type: "line", categories: ["2024", "2025", "2026"], series: [["Series 1", [4.1, 5.3, 3.2]], ["Series 2", [5.1, 2.4, 2]]] },
+    combo:      { type: "combo", categories: ["2024", "2025", "2026"], series: [["Sales", [10, 12, 14], { kind: "bar" }], ["Growth", [80, 95, 90], { kind: "line", axis: "secondary", unit: "%" }]] },
+  };
+  function applyPreset(key) {
+    const p = PRESETS[key];
+    state.type = p.type;
+    $("chartType").value = p.type;
+    state.categories = p.categories.slice();
+    state.series = p.series.map(([name, vals, extra]) => Object.assign(
+      { name, color: "", kind: "bar", axis: "primary", labelPos: "auto", raw: vals.map((v) => toRaw(v, locale)) }, extra || {}));
+    state.deltas = [];
+    ["yMin", "yMax", "y2Min", "y2Max"].forEach((id) => { $(id).value = ""; });
+    renderArrowControls(null);
+    renderSheet();
+    refresh({ live: false });
+  }
+  document.querySelector(".gallery").addEventListener("click", (ev) => {
+    const t = ev.target.closest(".tile");
+    if (!t) return;
+    applyPreset(t.dataset.preset);
+    target = null;                       // a tile always makes a new chart
+    $("btnUpdate").disabled = true;
+    if (inOffice && pptReady()) {
+      guarded(async () => {
+        const r = await ChartPPT.insertChart(buildSpec());
+        target = { id: r.id, slideId: r.slideId };
+        $("btnUpdate").disabled = false;
+        setStatus("Chart inserted" + r.note + ". Type or paste your numbers in the datasheet.", "ok");
+      }).then(openDatasheet);
+    } else {
+      openDatasheet();
+      setStatus("Preview mode — the chart is inserted when this panel runs inside PowerPoint.");
+    }
+  });
+
+  // ------------------------------------------------------------------ datasheet popup
+  let sheetDlg = null, sheetWin = null, sheetPushTimer = null, applyingSheet = false;
+  const sheetOpen = () => !!sheetDlg || !!(sheetWin && !sheetWin.closed);
+  function sheetPayload() {
+    return { type: "load", chartType: state.type, categories: state.categories.slice(), series: state.series.map((s) => ({ name: s.name, raw: s.raw.slice() })) };
+  }
+  function sendToSheet(payload) {
+    try {
+      if (sheetDlg && typeof sheetDlg.messageChild === "function") sheetDlg.messageChild(JSON.stringify(payload));
+      else if (sheetWin && !sheetWin.closed) sheetWin.postMessage({ source: "chartlite-pane", msg: payload }, "*");
+    } catch (e) { /* the datasheet was closed */ }
+  }
+  function scheduleSheetPush() {
+    if (!sheetOpen()) return;
+    clearTimeout(sheetPushTimer);
+    sheetPushTimer = setTimeout(() => sendToSheet(sheetPayload()), 400);
+  }
+  function openDatasheet() {
+    const payload = sheetPayload();
+    if (sheetOpen()) { sendToSheet(payload); if (sheetWin) sheetWin.focus(); return; }
+    const json = JSON.stringify(payload);
+    const base = new URL("datasheet.html", location.href).href;
+    const url = json.length < 1500 ? base + "#d=" + encodeURIComponent(json) : base;
+    if (inOffice && Office.context.ui && Office.context.ui.displayDialogAsync) {
+      Office.context.ui.displayDialogAsync(url, { height: 42, width: 46, displayInIframe: false, promptBeforeOpen: false }, (res) => {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          setStatus("Couldn't open the datasheet (" + ((res.error && res.error.message) || "unknown error") + "). You can still edit in the Data section below.", "err");
+          return;
+        }
+        sheetDlg = res.value;
+        sheetDlg.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
+          try { onSheetMessage(JSON.parse(arg.message)); } catch (e) { /* ignore malformed */ }
+        });
+        sheetDlg.addEventHandler(Office.EventType.DialogEventReceived, () => { sheetDlg = null; });
+      });
+    } else {
+      sheetWin = window.open(url, "chartlite-datasheet", "width=780,height=460");
+      if (!sheetWin) setStatus("The datasheet window was blocked — allow pop-ups, or edit in the Data section below.", "err");
+    }
+  }
+  function onSheetMessage(m) {
+    if (!m) return;
+    if (m.type === "ready") sendToSheet(sheetPayload());   // also covers data too long for the URL
+    else if (m.type === "data") applySheetData(m);
+  }
+  function applySheetData(m) {
+    const old = state.series;
+    if (m.pasted) {
+      const rows = [[""].concat(m.categories)].concat(m.series.map((s) => [s.name].concat(s.raw)));
+      const det = detectLocale(rows);
+      if (det && det !== locale) { locale = det; $("locale").value = det; }
+      adoptExcelFormat(rows);
+    }
+    state.categories = m.categories.slice();
+    state.series = m.series.map((s, i) => {
+      const o = old[i] || {};
+      return {
+        name: s.name, raw: s.raw.slice(), color: o.color || "",
+        kind: o.kind || (state.type === "combo" && i > 0 ? "line" : "bar"),
+        axis: o.axis || "primary", labelPos: o.labelPos || "auto", unit: o.unit,
+      };
+    });
+    state.deltas = state.deltas.filter((d) => d.from < state.categories.length && d.to < state.categories.length);
+    applyingSheet = true;
+    try { renderSheet(); } finally { applyingSheet = false; }
+    refresh();
+  }
+  window.addEventListener("message", (e) => {
+    const d = e.data;
+    if (d && d.source === "chartlite-sheet" && (!sheetWin || e.source === sheetWin)) onSheetMessage(d.msg);
+  });
+  $("btnSheet").addEventListener("click", openDatasheet);
+  window.__chartlite = { applySheetData, sheetPayload, applyPreset };   // test hooks
 
   // ------------------------------------------------------------------ preview + live
   function refresh(opts) {
@@ -557,7 +688,7 @@
   writeOptions(E.mergeOptions({ options: {} }));
   drawPreview();
 
-  const VERSION = "1.2.1";
+  const VERSION = "1.3.0";
   $("ver").textContent = "ChartLite v" + VERSION;
   $("btnReload").addEventListener("click", () => location.reload());
 

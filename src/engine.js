@@ -37,7 +37,10 @@
     smooth: false,               // smooth (curved) lines
     markerSize: null,            // dot diameter in pt (null = auto, 0 = no dots)
     markerFill: "solid",         // solid | white | none
-    legendPos: "auto",           // auto (line charts: at line ends, others: top) | top | end
+    legendPos: "auto",           // auto | top | start (left of bars) | end (line ends / right of bars)
+    labelPos: "auto",            // auto | above | center | below | none (series can override)
+    markerShape: "circle",       // circle | square | diamond | triangle | none
+    showAxis: false,             // value axis with tick labels
     lineWidth: 1.75,
     barWidth: 0.62,        // fraction of the category slot used by bars
     pct100Labels: true,    // 100% chart: label segments with share instead of value
@@ -222,9 +225,28 @@
     // ---- vertical bands (top → bottom)
     const multiSeries = !isWF && spec.series.length > 1;
     const pureLine = type === "line";
-    const legendPos = o.legendPos === "auto" || !o.legendPos ? (pureLine ? "end" : "top") : o.legendPos;
+    const stackType = type === "stacked" || type === "stacked100";
+    const legendPos = o.legendPos === "auto" || !o.legendPos
+      ? (pureLine ? "end" : stackType && barIdx.length > 1 ? (o.showAxis ? "end" : "start") : "top") : o.legendPos;
     const endLegend = o.showLegend && pureLine && legendPos === "end";
-    const legendH = o.showLegend && multiSeries && !endLegend ? fs * 2.0 : 0;
+    const sideLegend = o.showLegend && multiSeries && stackType && (legendPos === "start" || legendPos === "end") ? legendPos : null;
+    const legendH = o.showLegend && multiSeries && !endLegend && !sideLegend ? fs * 2.0 : 0;
+    const seriesName = (i) => spec.series[i].name || "Series " + (i + 1);
+    const sideNameW = sideLegend ? Math.max(...barIdx.map((i) => textW(seriesName(i), fs))) + fs * 0.6 : 0;
+
+    // value axis: "nice" ticks inside [vmin, vmax]
+    const ticks = [];
+    let tickDec = 0;
+    if (o.showAxis) {
+      const raw = (vmax - vmin) / 5;
+      const p10 = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+      const f = raw / p10;
+      const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p10;
+      while (tickDec < 6 && Math.abs(step * Math.pow(10, tickDec) - Math.round(step * Math.pow(10, tickDec))) > 1e-6) tickDec++;
+      for (let t = Math.ceil(vmin / step - 1e-9) * step; t <= vmax + step * 1e-6; t += step) ticks.push(Math.abs(t) < step * 1e-9 ? 0 : t);
+    }
+    const tickLabel = (t) => formatNumber(t, o, { decimals: tickDec });
+    const axisW = ticks.length ? Math.max(...ticks.map((t) => textW(tickLabel(t), fs))) + fs * 0.5 : 0;
     const arrows = [];
     if (o.cagr && o.cagr.from !== undefined && o.cagr.to !== undefined && o.cagr.from !== o.cagr.to && !isWF)
       arrows.push({ from: +o.cagr.from, to: +o.cagr.to, mode: "cagr" });
@@ -264,11 +286,20 @@
 
     const msEarly = isNum(o.markerSize) ? Math.max(0, o.markerSize) : fs * 0.5;
     const endW = endLegend ? Math.max(...lineIdx.map((i) => textW(spec.series[i].name || "Series " + (i + 1), fs))) + msEarly / 2 + fs * 1.6 : 0;
-    const slot = (box.w - endW) / n;
+    const leftW = axisW + (sideLegend === "start" ? sideNameW : 0);
+    const rightW = endW + (sideLegend === "end" ? sideNameW : 0);
+    const px0 = box.x + leftW;
+    const slot = (box.w - leftW - rightW) / n;
+    const pxEnd = px0 + slot * n;
     const barW = slot * o.barWidth;
-    const cx = (c) => box.x + slot * (c + 0.5);
+    const cx = (c) => px0 + slot * (c + 0.5);
     const labelTop = [];   // per category: highest y used (for arrows)
-    const ms = msEarly;
+    const ms = o.markerShape === "none" ? 0 : msEarly;
+    const shape = o.markerShape || "circle";
+    const posFor = (i) => {
+      const sp = spec.series[i] && spec.series[i].labelPos;
+      return sp && sp !== "auto" ? sp : (o.labelPos || "auto");
+    };
     const dotStyle = (col, size) => o.markerFill === "none"
       ? { fill: null, stroke: col, strokeW: Math.max(1, size * 0.18) }
       : o.markerFill === "white"
@@ -284,7 +315,7 @@
         const isLine = lineIdx.indexOf(i) >= 0;
         if (isLine) {
           P.push({ type: "line", x1: lx, y1: ly + fs * 0.6, x2: lx + fs * 1.4, y2: ly + fs * 0.6, color: col, w: o.lineWidth || 1.75 });
-          if (ms > 0) P.push(Object.assign({ type: "dot", x: lx + fs * 0.45, y: ly + fs * 0.35, w: fs * 0.5, h: fs * 0.5 }, dotStyle(col, fs * 0.5)));
+          if (ms > 0) P.push(Object.assign({ type: "dot", shape, x: lx + fs * 0.45, y: ly + fs * 0.35, w: fs * 0.5, h: fs * 0.5 }, dotStyle(col, fs * 0.5)));
         } else {
           P.push({ type: "rect", x: lx + fs * 0.2, y: ly + fs * 0.1, w: fs, h: fs, fill: col });
         }
@@ -297,8 +328,32 @@
 
     // ---- baseline
     if (barIdx.length) {
-      P.push({ type: "line", x1: box.x, y1: yBase, x2: box.x + box.w, y2: yBase, color: o.axisColor, w: 0.75 });
+      P.push({ type: "line", x1: px0, y1: yBase, x2: pxEnd, y2: yBase, color: o.axisColor, w: 0.75 });
     }
+
+    // ---- bar labels at a chosen position: above (outside end), center, below (inside base)
+    const lhB = fs * 1.4;
+    const barLabel = (pos, a) => {
+      // a: {x, w, y1, y2, lbl, col, neg, wideX, wideW, stackedTop}
+      if (pos === "none") return null;
+      const h = a.y2 - a.y1;
+      let y, inside;
+      if (pos === "above") {
+        if (a.stackedTop && h >= lhB) { y = a.y1 + 0.5; inside = true; }        // stacked: inside top of segment
+        else { y = a.neg ? a.y2 + fs * 0.1 : a.y1 - lhB - fs * 0.05; inside = false; }
+      } else if (pos === "below") {
+        if (h >= lhB) { y = a.y2 - lhB - 0.5; inside = true; } else { y = a.y2 + fs * 0.1; inside = false; }
+      } else {
+        if (h < fs * 1.15) return null;                                          // center: only if it fits
+        y = a.y1 + h / 2 - lhB / 2; inside = true;
+      }
+      P.push({
+        type: "text", x: inside ? a.x : a.wideX, y, w: inside ? a.w : a.wideW, h: lhB, text: a.lbl, size: fs,
+        color: a.neg ? NEG_RED : inside ? onColor(a.col) : o.textColor, align: "center",
+        fill: inside && a.neg && luminance(a.col) < 0.4 ? "#FFFFFF" : undefined,
+      });
+      return y;
+    };
 
     // ---- bars
     if (barIdx.length) {
@@ -315,10 +370,9 @@
             const col = seriesColor(spec, o, s.i);
             P.push({ type: "rect", x: x + bw * 0.04, y: y1, w: bw * 0.92, h: Math.max(0.5, y2 - y1), fill: col, role: "bar" });
             if (o.showLabels) {
-              const lbl = formatNumber(s.v, o);
-              const ly = s.v >= 0 ? y1 - fs * 1.5 : y2 + fs * 0.1;
-              P.push({ type: "text", x: x - fs, y: ly, w: bw + fs * 2, h: fs * 1.4, text: lbl, size: fs, color: s.v < 0 ? NEG_RED : o.textColor, align: "center" });
-              top = Math.min(top, ly);
+              const pos = posFor(s.i);
+              const ly = barLabel(pos === "auto" ? "above" : pos, { x: x + bw * 0.04, w: bw * 0.92, y1, y2, lbl: formatNumber(s.v, o), col, neg: s.v < 0, wideX: x - fs, wideW: bw + fs * 2 });
+              if (ly !== null) top = Math.min(top, ly);
             }
             top = Math.min(top, y1);
           });
@@ -346,17 +400,29 @@
             else lbl = formatNumber(val, o);
             const negLbl = (type === "stacked100" ? s.share : val) < 0;
             const fitsInside = h >= fs * 1.35 && barW >= textW(lbl, fs) * 0.8;
+            const pos = posFor(s.i);
+            const single = barIdx.length === 1 && type !== "stacked100";
             if (isWF) {
-              // waterfall: label above the bar (below for decreases)
-              const ly = s.wfKind === "down" ? y2 + fs * 0.1 : y1 - fs * 1.5;
-              P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.4, text: lbl, size: fs, color: negLbl ? NEG_RED : o.textColor, align: "center" });
-              top = Math.min(top, ly);
-            } else if (fitsInside && !(barIdx.length === 1 && type !== "stacked100")) {
-              P.push({
+              if (pos === "auto") {
+                // waterfall: label above the bar (below for decreases)
+                const ly = s.wfKind === "down" ? y2 + fs * 0.1 : y1 - fs * 1.5;
+                P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.4, text: lbl, size: fs, color: negLbl ? NEG_RED : o.textColor, align: "center" });
+                top = Math.min(top, ly);
+              } else {
+                const ly = barLabel(pos, { x, w: barW, y1, y2, lbl, col, neg: negLbl, wideX: cx(c) - slot / 2, wideW: slot });
+                if (ly !== null) top = Math.min(top, ly);
+              }
+            } else if (single) {
+              // plain bar: auto/above handled with the total above the bar further down
+              if (pos === "center" || pos === "below") barLabel(pos, { x, w: barW, y1, y2, lbl, col, neg: negLbl, wideX: cx(c) - slot / 2, wideW: slot });
+            } else if (pos === "auto" || pos === "center") {
+              if (fitsInside) P.push({
                 type: "text", x, y: y1, w: barW, h, text: lbl, size: fs,
                 color: negLbl ? NEG_RED : onColor(col), align: "center",
                 fill: negLbl && luminance(col) < 0.4 ? "#FFFFFF" : undefined,
               });
+            } else {
+              barLabel(pos, { x, w: barW, y1, y2, lbl, col, neg: negLbl, wideX: x, wideW: barW, stackedTop: true });
             }
           });
           // totals above the stack
@@ -366,7 +432,7 @@
             const ly = t >= 0 || type === "stacked100" ? Yc(e.top) - fs * 1.55 : Yc(e.bottom) + fs * 0.15;
             P.push({ type: "text", x: cx(c) - slot / 2, y: ly, w: slot, h: fs * 1.45, text: lbl, size: fs, color: t < 0 ? NEG_RED : o.textColor, align: "center" });
             top = Math.min(top, ly);
-          } else if (!isWF && o.showLabels && barIdx.length === 1 && type !== "stacked100") {
+          } else if (!isWF && o.showLabels && barIdx.length === 1 && type !== "stacked100" && ["auto", "above"].indexOf(posFor(barIdx[0])) >= 0) {
             // single-series stacked == plain bar: put value above instead of inside
             const t = e.total;
             const ly = t >= 0 ? Yc(e.top) - fs * 1.5 : Yc(e.bottom) + fs * 0.1;
@@ -375,6 +441,20 @@
           }
         }
         labelTop[c] = top;
+      }
+
+      if (sideLegend) {
+        const c = sideLegend === "start" ? 0 : n - 1;
+        const items = cat[c].segs.map((sg) => ({ i: sg.i, y: (Yc(sg.hi) + Yc(sg.lo)) / 2 })).sort((a, b) => a.y - b.y);
+        const gap = fs * 1.25;
+        for (let k = 1; k < items.length; k++) if (items[k].y - items[k - 1].y < gap) items[k].y = items[k - 1].y + gap;
+        items.forEach((it) => {
+          const nm = seriesName(it.i), w = textW(nm, fs);
+          const x = sideLegend === "start"
+            ? (ticks.length ? px0 - axisW - fs * 0.2 - w : cx(0) - barW / 2 - fs * 0.4 - w)
+            : cx(n - 1) + barW / 2 + fs * 0.4;
+          P.push({ type: "text", x, y: it.y - fs * 0.65, w, h: fs * 1.3, text: nm, size: fs, color: o.textColor, align: sideLegend === "start" ? "right" : "left" });
+        });
       }
 
       // waterfall connectors
@@ -410,13 +490,14 @@
           P.push({ type: "line", x1: path[k].x, y1: path[k].y, x2: path[k + 1].x, y2: path[k + 1].y, color: col, w: o.lineWidth || 1.75, join: true });
         }
       });
+      const lpos = posFor(i);
       pts.forEach((p) => {
         if (!p) return;
-        if (ms > 0) P.push(Object.assign({ type: "dot", x: p.x - ms / 2, y: p.y - ms / 2, w: ms, h: ms }, dotStyle(col, ms)));
-        if (o.showLabels) {
+        if (ms > 0 && !(o.showLabels && lpos === "center")) P.push(Object.assign({ type: "dot", shape, x: p.x - ms / 2, y: p.y - ms / 2, w: ms, h: ms }, dotStyle(col, ms)));
+        if (o.showLabels && lpos !== "none") {
           const lbl = formatNumber(p.v, o, s.unit !== undefined ? { unit: s.unit } : {});
           const overBars = barIdx.length && secondary.indexOf(i) < 0;   // only then can labels collide with bars
-          lineLabels.push({ p, lbl, col, overBars, series: i });
+          lineLabels.push({ p, lbl, col, overBars, series: i, pos: lpos });
         }
       });
     });
@@ -449,7 +530,20 @@
     const labelHits = (r) => placed.some((q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y);
     for (let c = 0; c < n; c++) {
       const here = lineLabels.filter((L) => L.p.c === c).sort((a, b) => a.p.y - b.p.y);
+      // fixed positions first, so the automatic ones can avoid them
+      here.filter((L) => L.pos !== "auto").forEach((L) => {
+        const lw = textW(L.lbl, fs) - 2;
+        let r;
+        if (L.pos === "center") r = { x: L.p.x - lw / 2 - 2, y: L.p.y - lh / 2, w: lw + 4, h: lh };
+        else if (L.pos === "below") r = { x: L.p.x - lw / 2, y: L.p.y + gapA, w: lw, h: lh };
+        else r = { x: L.p.x - lw / 2, y: L.p.y - gapA - lh, w: lw, h: lh };
+        placed.push(r);
+        P.push({ type: "text", x: r.x, y: r.y, w: r.w, h: r.h, text: L.lbl, size: fs, color: L.p.v < 0 ? NEG_RED : o.textColor, align: "center", fill: L.pos === "center" ? "#FFFFFF" : undefined, stroke: L.pos === "center" ? L.col : undefined, round: L.pos === "center" });
+        if (r.y < L.p.y) labelTop[c] = Math.min(labelTop[c] === undefined ? Infinity : labelTop[c], r.y);
+        lastLabel[L.series + ":" + c] = lw;
+      });
       here.forEach((L, k) => {
+        if (L.pos !== "auto") return;
         const lw = textW(L.lbl, fs) - 2;
         const lowest = k === here.length - 1 && here.length > 1;
         const up = { x: L.p.x - lw / 2, y: L.p.y - gapA - lh };
@@ -497,7 +591,18 @@
 
     // ---- category labels (line charts get a thin category axis like think-cell)
     const catTop = pureLine ? plotBottom + fs * 0.9 : plotBottom + bottomPad + fs * 0.3;
-    if (pureLine) P.push({ type: "line", x1: box.x, y1: plotBottom + fs * 0.6, x2: box.x + slot * n, y2: plotBottom + fs * 0.6, color: o.axisColor, w: 0.75 });
+    if (pureLine) P.push({ type: "line", x1: px0, y1: plotBottom + fs * 0.6, x2: pxEnd, y2: plotBottom + fs * 0.6, color: o.axisColor, w: 0.75 });
+
+    // ---- value axis
+    if (ticks.length) {
+      const yb = pureLine ? plotBottom + fs * 0.6 : plotBottom;
+      P.push({ type: "line", x1: px0, y1: Math.min(Y(ticks[ticks.length - 1]), Y(vmax)), x2: px0, y2: yb, color: o.axisColor, w: 0.75 });
+      ticks.forEach((t) => {
+        const y = Y(t), lbl = tickLabel(t), w = textW(lbl, fs);
+        P.push({ type: "line", x1: px0 - fs * 0.3, y1: y, x2: px0, y2: y, color: o.axisColor, w: 0.75 });
+        P.push({ type: "text", x: px0 - fs * 0.4 - w, y: y - fs * 0.65, w, h: fs * 1.3, text: lbl, size: fs, color: t < 0 ? NEG_RED : o.textColor, align: "right" });
+      });
+    }
     for (let c = 0; c < n; c++) {
       P.push({ type: "text", x: cx(c) - slot / 2, y: catTop, w: slot, h: catH - fs * 0.9, text: String(cats[c]), size: fs, color: o.textColor, align: "center", wrap: true, valign: "top" });
     }
@@ -603,6 +708,12 @@
       else if (p.type === "tri") {
         const pts = p.dir === "down" ? `${p.x},${p.y} ${p.x + p.w},${p.y} ${p.x + p.w / 2},${p.y + p.h}` : `${p.x},${p.y + p.h} ${p.x + p.w},${p.y + p.h} ${p.x + p.w / 2},${p.y}`;
         out.push(`<polygon points="${pts}" fill="${p.fill}"/>`);
+      } else if (p.type === "dot" && p.shape && p.shape !== "circle") {
+        const cx2 = p.x + p.w / 2, cy2 = p.y + p.h / 2;
+        const pts = p.shape === "square" ? `${p.x},${p.y} ${p.x + p.w},${p.y} ${p.x + p.w},${p.y + p.h} ${p.x},${p.y + p.h}`
+          : p.shape === "diamond" ? `${cx2},${p.y} ${p.x + p.w},${cy2} ${cx2},${p.y + p.h} ${p.x},${cy2}`
+          : `${cx2},${p.y} ${p.x + p.w},${p.y + p.h} ${p.x},${p.y + p.h}`;
+        out.push(`<polygon points="${pts}" fill="${p.fill || "none"}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.strokeW || 0.75}"` : ""}/>`);
       } else if (p.type === "dot") out.push(`<ellipse cx="${p.x + p.w / 2}" cy="${p.y + p.h / 2}" rx="${p.w / 2}" ry="${p.h / 2}" fill="${p.fill || "none"}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.strokeW || 0.75}"` : ""}/>`);
       else if (p.type === "text") {
         if (p.fill || p.stroke) out.push(`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${p.round ? p.h / 2 : 0}" fill="${p.fill || "none"}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="0.75"` : ""}/>`);

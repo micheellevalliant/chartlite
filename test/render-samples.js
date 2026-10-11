@@ -71,6 +71,40 @@ const samples = {
   },
 };
 
+// v1.3 options: side legend, value axis, label positions, marker shapes
+Object.assign(samples, {
+  stacked_side_axis: {
+    type: "stacked", categories: ["2024", "2025", "2026"],
+    series: [{ name: "Series 1", values: [4.4, 5.9, 6] }, { name: "Series 2", values: [6, 2.3, 2.4] }, { name: "Series 3", values: [12.7, 36.9, 21.6] }],
+    options: { decimals: 1, showAxis: true },
+  },
+  pct100_side: {
+    type: "stacked100", categories: ["2024", "2025", "2026"],
+    series: [{ name: "Series 1", values: [4.4, 5.9, 6] }, { name: "Series 2", values: [6, 2.3, 2.4] }, { name: "Series 3", values: [12.7, 36.9, 21.6] }],
+    options: { decimals: 1 },
+  },
+  line_axis_markers: {
+    type: "line", categories: ["2024", "2025", "2026", "2027"],
+    series: [{ name: "Series 1", values: [4.1, 5.3, 3.2, 3.9], labelPos: "above" }, { name: "Series 2", values: [5.1, 2.4, 2, 2.6], labelPos: "below" }],
+    options: { decimals: 1, showAxis: true, yMin: 0, markerShape: "square", markerSize: 7 },
+  },
+  line_center_labels: {
+    type: "line", categories: ["Q1", "Q2", "Q3", "Q4"],
+    series: [{ name: "Plan", values: [40, 45, 52, 60] }, { name: "Actual", values: [38, 47, 50, 63] }],
+    options: { labelPos: "center", markerShape: "diamond" },
+  },
+  clustered_center: {
+    type: "clustered", categories: ["Q1", "Q2", "Q3", "Q4"],
+    series: [{ name: "Target", values: [420, 440, 465, 480] }, { name: "Actual", values: [431, 425, 470, 455] }],
+    options: { labelPos: "center", showAxis: true },
+  },
+  bar_below: {
+    type: "stacked", categories: ["A", "B", "C", "D"],
+    series: [{ name: "Value", values: [120, 95, 140, 110] }],
+    options: { labelPos: "below" },
+  },
+});
+
 for (const [name, spec] of Object.entries(samples)) {
   const L = E.layoutChart(spec, box);
   fs.writeFileSync(path.join(out, name + ".svg"), E.toSVG(L, { width: 900 }));

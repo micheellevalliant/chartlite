@@ -88,3 +88,14 @@ input[type=color] { width: 100%; height: 28px; border: 1px solid var(--line); bo
 .stepper { display: flex; gap: 4px; }
 .stepper input { width: 100%; min-width: 0; text-align: center; }
 .stepper button { padding: 0 10px; font-weight: 700; }
+
+.elements .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.tile {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 2px 4px; min-height: 64px; background: #fff; border: 1px solid transparent; border-radius: 6px;
+  font-size: 11px; line-height: 1.15; color: var(--ink); text-align: center;
+}
+.tile:hover { border-color: var(--line); background: var(--soft); }
+.tile:active { background: #e8eef5; }
+.tile svg { width: 30px; height: 30px; }
+.sheet .smeta .lpos { width: 74px; }

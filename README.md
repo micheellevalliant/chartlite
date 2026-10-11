@@ -36,6 +36,18 @@ Each work session, double-click `start.bat` again (it starts the small local ser
 
 ## 2. Make a chart
 
+### Fastest way: Elements + datasheet
+
+1. In the ChartLite panel, click a chart in **Elements**: Stacked, 100%, Clustered, Build-up waterfall, Build-down waterfall, Line or Combination.
+2. The chart is placed on the current slide with sample numbers, and the **datasheet** opens in its own window. It works like a small Excel sheet:
+   - Row 1 holds the category names (years, months…) and column A the series names. The shaded cells are the headers.
+   - Type over any cell, or copy a range in Excel and press **Ctrl+V** in the datasheet.
+   - **Enter** / **Tab** / arrow keys move around, **Delete** clears, **Ctrl+Z** undoes, **⇄ Transpose** swaps rows and columns.
+   - Adding a value in a new column or row adds a category or series. Clearing it removes it.
+3. The chart on the slide updates live while you type. Click **▦ Datasheet** in the panel to reopen it for the selected chart.
+
+### Or paste straight into the panel
+
 1. In Excel, select a range like this and **Ctrl+C**:
 
    |              | Jan   | Feb   | Mar   |
@@ -66,7 +78,16 @@ Move or resize the chart group freely — the next update re-lays it out to the 
 
 Note: manual tweaks made directly to shapes inside a chart (recoloring one bar, editing a label) are replaced on the next update. Make changes in the panel instead, or ungroup the chart to finalize it by hand.
 
-## 4. Scale & lines
+## 4. Labels, bullets and axis
+
+- **Label position** (Labels & numbers): *Auto*, *Above*, *Center*, *Below* or *None*. Each series can override it in the panel's data table. That's useful for lines, e.g. one line labelled above and the other below.
+  - Bars: *Above* puts the number on top of the bar, *Center* in the middle, *Below* inside the bottom. In stacked charts, *Above* and *Below* sit inside the top or bottom of each segment.
+  - Lines: *Above* and *Below* are fixed sides; *Center* puts the number on the point in a small rounded box (instead of the bullet).
+- **Bullet shape** and **Bullet size** (Scale & lines): circle, square, diamond, triangle or none, with − / + for size and solid or blank fill.
+- **Value axis**: *Shown* draws a vertical scale with tick labels on the left. Combine it with **Axis min / max** to start the scale at, say, 4 when your values sit around 5.
+- **Legend**: *Auto* puts series names next to the stacked bars (left, or right when the value axis is shown) and at the end of each line. You can also choose *Top*, *Left of bars* or *Right / line ends*.
+
+## 5. Scale & lines
 
 - **Axis min / Axis max** — set where the value scale starts and ends. If your values sit around 5,000,000, set Axis min to 4,000,000 (type it the way your data is written) so the trend is visible instead of flat bars from zero. Leave blank for automatic.
 - **Fit scale to data** — sets Axis min just below your lowest value in one click. **Auto scale** clears it again.
@@ -77,7 +98,7 @@ Note: manual tweaks made directly to shapes inside a chart (recoloring one bar, 
 
 These settings are saved with the chart, so they come back when you select it again.
 
-## 5. Chart-type notes
+## 6. Chart-type notes
 
 **Waterfall** — uses the first series. The first value is the start bar, following values are changes (+/−), and typing **`e`** in a cell creates a total bar at that point. Example — a travel budget estimate:
 
@@ -91,7 +112,7 @@ Increases are green, decreases red, start/total bars dark (change under *Waterfa
 
 **Growth arrows** — *CAGR from/to* draws a compound-growth arrow between two categories (based on the category totals). *+ Difference arrow* adds a % change or absolute difference arrow; add several and they stack.
 
-## 6. Use it permanently without running a server (optional)
+## 7. Use it permanently without running a server (optional)
 
 Host the contents of `src/` on any HTTPS address (GitHub Pages or an internal web server — it's static files, and no data leaves your PC: everything runs inside PowerPoint). Then:
 
@@ -107,7 +128,8 @@ This writes `manifest-hosted.xml`; sideload that with the shared-folder method a
 |------|------------|
 | `src/engine.js` | Chart layout engine (data → exact shape positions). Pure JS; also drives the preview. |
 | `src/render-ppt.js` | Draws the layout as native PowerPoint shapes, groups them, stores the data on the group. |
-| `src/taskpane.*` | The ChartLite panel: paste box, datasheet, options, preview. |
+| `src/taskpane.*` | The ChartLite panel: Elements gallery, paste box, data table, options, preview. |
+| `src/datasheet.*` | The Excel-style datasheet window that opens next to PowerPoint. |
 | `manifest.xml` | Tells PowerPoint where the add-in lives and adds the ribbon button. |
 | `serve.js`, `start.bat`, `stop.bat` | Local HTTPS server and one-click launchers. |
 | `test/` | Sample renders and an end-to-end test against a mock PowerPoint API. |

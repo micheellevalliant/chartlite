@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ChartLite Datasheet</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root {
+      --grid: #d4d4d4;
+      --head: #f3f3f3;
+      --head-ink: #616161;
+      --head-sel: #d3f0e0;
+      --data-head: #fce4d6;
+      --sel: #e6f2ea;
+      --active: #217346;
+      --ink: #1f1f1f;
+      --neg: #c00000;
+      --cw: 92px;
+      --rh: 24px;
+      font-family: Calibri, "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      color: var(--ink);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #fff; overflow: hidden; }
+    body { display: flex; flex-direction: column; }
+    .top {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 6px 10px; border-bottom: 1px solid var(--grid); background: #fafafa;
+      font-family: "Segoe UI", Arial, sans-serif; font-size: 12px;
+    }
+    .top .title { font-weight: 600; color: var(--active); margin-right: 4px; }
+    .top button {
+      font: inherit; border: 1px solid #c8c8c8; background: #fff; border-radius: 3px;
+      padding: 3px 8px; cursor: pointer;
+    }
+    .top button:hover { background: #eef5f0; border-color: #9cc3a9; }
+    .top .hint { color: #6b6b6b; }
+    .top .sync { margin-left: auto; color: #6b6b6b; }
+    .top .sync.ok { color: var(--active); }
+    .fx {
+      display: flex; align-items: center; gap: 6px; padding: 3px 6px;
+      border-bottom: 1px solid var(--grid); font-size: 13px;
+    }
+    .fx .ref { width: 64px; text-align: center; color: #444; border-right: 1px solid var(--grid); padding-right: 6px; }
+    .fx input { flex: 1; border: 0; outline: 0; font: inherit; padding: 2px 4px; }
+    .wrap { flex: 1; overflow: auto; position: relative; outline: none; }
+    table { border-collapse: separate; border-spacing: 0; table-layout: fixed; user-select: none; }
+    td, th {
+      width: var(--cw); min-width: var(--cw); max-width: var(--cw); height: var(--rh);
+      border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid);
+      padding: 0 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    th {
+      background: var(--head); color: var(--head-ink); font-weight: 400; font-size: 12px;
+      position: sticky; top: 0; z-index: 2; text-align: center;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+    th.rowh, td.rowh {
+      width: 40px; min-width: 40px; max-width: 40px; position: sticky; left: 0; z-index: 1;
+      background: var(--head); color: var(--head-ink); text-align: center; font-size: 12px;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+    th.rowh { z-index: 3; }
+    th.hl, td.rowh.hl { background: var(--head-sel); color: var(--active); font-weight: 600; }
+    td.c { cursor: cell; }
+    td.r0, td.c0 { background: var(--data-head); }
+    td.num { text-align: right; }
+    td.neg { color: var(--neg); }
+    td.insel { background-color: var(--sel); }
+    td.r0.insel, td.c0.insel { background-color: #f6d3bd; }
+    td.active { box-shadow: inset 0 0 0 2px var(--active); }
+    td.corner { position: relative; padding: 0; }
+    td.corner svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    td.corner .cat { position: absolute; right: 4px; top: 0; font-size: 9px; color: #7a5a48; }
+    td.corner .ser { position: absolute; left: 4px; bottom: 0; font-size: 9px; color: #7a5a48; }
+    #editor {
+      position: absolute; display: none; z-index: 5; border: 2px solid var(--active);
+      font: inherit; padding: 0 4px; outline: none; background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <span class="title" id="title">Datasheet</span>
+    <button id="btnTranspose" title="Swap rows and columns">⇄ Transpose</button>
+    <button id="btnClear" title="Clear all data">Clear</button>
+    <button id="btnUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
+    <span class="hint">Paste from Excel with Ctrl+V · Waterfall: type <b>e</b> for a total</span>
+    <span class="sync" id="sync">Changes update the chart live</span>
+  </div>
+  <div class="fx">
+    <span class="ref" id="ref">A1</span>
+    <input id="fx" spellcheck="false" aria-label="Cell contents" />
+  </div>
+  <div class="wrap" id="wrap" tabindex="0">
+    <table id="grid"></table>
+    <input id="editor" spellcheck="false" />
+  </div>
+  <script src="datasheet.js"></script>
+</body>
+</html>
